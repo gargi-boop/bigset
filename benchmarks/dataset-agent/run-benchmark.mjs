@@ -519,6 +519,9 @@ await main();
 
 async function runSystemPrompt(input) {
   const startedAt = Date.now();
+  const minimumRequiredColumns = minimumRequiredColumnsForPrompt(
+    input.promptDefinition
+  );
   const command = renderCommand(input.system.command, input.promptDefinition);
   console.error(
     `[${input.system.name}] ${input.promptIndex + 1}/${input.promptCount} ${input.promptDefinition.id}`
@@ -532,6 +535,7 @@ async function runSystemPrompt(input) {
       BIGSET_BENCHMARK_PROMPT_ID: input.promptDefinition.id,
       BIGSET_BENCHMARK_PROMPT_QUALITY: input.promptDefinition.quality,
       BIGSET_BENCHMARK_REQUIRED_COLUMNS: input.promptDefinition.requiredColumns.join(","),
+      BIGSET_BENCHMARK_MINIMUM_REQUIRED_COLUMNS: minimumRequiredColumns.join(","),
     },
   });
   const parsedPayload = parseJsonPayload(execution.stdout);
@@ -582,7 +586,9 @@ async function runSystemPrompt(input) {
     promptQuality: input.promptDefinition.quality,
     promptPersona: input.promptDefinition.persona,
     prompt: input.promptDefinition.prompt,
+    requestedColumns: input.promptDefinition.requiredColumns,
     requiredColumns: input.promptDefinition.requiredColumns,
+    minimumRequiredColumns,
     expectedStress: input.promptDefinition.expectedStress,
     answerKey: answerKeyForPrompt(input.promptDefinition),
     status,
@@ -603,10 +609,13 @@ async function runSystemPrompt(input) {
     rowCount: validation.rowCount,
     nonEmptyCellCount: validation.nonEmptyCellCount,
     totalExpectedCellCount: validation.totalExpectedCellCount,
+    requestedCellCompletenessRatio: validation.requestedCellCompletenessRatio,
     requiredCellCompletenessRatio: validation.requiredCellCompletenessRatio,
     sourceUrlCount: validation.sourceUrlCount,
     evidenceQuoteCount: validation.evidenceQuoteCount,
     duplicateIdentityCount: validation.duplicateIdentityCount,
+    missingRequestedCellCount: validation.missingRequestedCellCount,
+    missingRequestedCells: validation.missingRequestedCells,
     missingRequiredCellCount: validation.missingRequiredCellCount,
     missingRequiredCells: validation.missingRequiredCells,
     needsReviewCount: validation.needsReviewCount,
@@ -633,6 +642,90 @@ async function runSystemPrompt(input) {
         minRequiredCompleteness: input.config.minRequiredCompleteness,
       }),
   };
+}
+
+function minimumRequiredColumnsForPrompt(promptDefinition) {
+  if (Array.isArray(promptDefinition.minimumRequiredColumns)) {
+    return uniqueStrings(promptDefinition.minimumRequiredColumns);
+  }
+  return inferConservativeMinimumRequiredColumns(promptDefinition.requiredColumns ?? []);
+}
+
+function inferConservativeMinimumRequiredColumns(columns) {
+  const requestedColumns = uniqueStrings(columns);
+  const identityPriority = [
+    "entity_name",
+    "company_name",
+    "organization_name",
+    "provider_name",
+    "restaurant_name",
+    "store_name",
+    "business_name",
+    "bakery_name",
+    "product_name",
+    "person_name",
+    "profile_name",
+    "docs_title",
+    "latest_item_title",
+    "open_role_title",
+  ];
+  const identityUrlPriority = [
+    "company_domain",
+    "official_website",
+    "official_source_url",
+    "profile_url",
+    "linkedin_url",
+    "product_url",
+    "website_url",
+    "docs_url",
+    "careers_page_url",
+    "quote_page_url",
+    "menu_url",
+    "pricing_page_url",
+  ];
+
+  const prioritizedIdentityColumn = identityPriority.find((columnName) =>
+    requestedColumns.includes(columnName)
+  );
+  if (prioritizedIdentityColumn) {
+    return [prioritizedIdentityColumn];
+  }
+
+  const nameColumn = requestedColumns.find((columnName) =>
+    /(^|_)name$/.test(columnName)
+  );
+  if (nameColumn) {
+    return [nameColumn];
+  }
+
+  const titleColumn = requestedColumns.find((columnName) =>
+    /(^|_)title$/.test(columnName)
+  );
+  if (titleColumn) {
+    return [titleColumn];
+  }
+
+  const identityUrlColumn = identityUrlPriority.find((columnName) =>
+    requestedColumns.includes(columnName)
+  );
+  if (identityUrlColumn) {
+    return [identityUrlColumn];
+  }
+
+  const fallbackIdentityColumn = requestedColumns.find(
+    (columnName) =>
+      columnName !== "source_url" &&
+      !columnName.endsWith("_at") &&
+      !columnName.includes("score") &&
+      !columnName.startsWith("is_") &&
+      !columnName.startsWith("has_")
+  );
+
+  return fallbackIdentityColumn ? [fallbackIdentityColumn] : [];
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values.filter((value) => typeof value === "string" && value.length > 0))];
 }
 
 function parseArgs(args) {
@@ -752,11 +845,13 @@ function parseSystem(value) {
 }
 
 function renderCommand(command, promptDefinition) {
+  const minimumRequiredColumns = minimumRequiredColumnsForPrompt(promptDefinition);
   return command
     .replaceAll("{{prompt}}", shellEscape(promptDefinition.prompt))
     .replaceAll("{{promptJson}}", shellEscape(JSON.stringify(promptDefinition.prompt)))
     .replaceAll("{{promptId}}", shellEscape(promptDefinition.id))
-    .replaceAll("{{requiredColumnsJson}}", shellEscape(JSON.stringify(promptDefinition.requiredColumns)));
+    .replaceAll("{{requiredColumnsJson}}", shellEscape(JSON.stringify(promptDefinition.requiredColumns)))
+    .replaceAll("{{minimumRequiredColumnsJson}}", shellEscape(JSON.stringify(minimumRequiredColumns)));
 }
 
 function runCommand({ command, timeoutMs, env }) {
@@ -912,10 +1007,13 @@ function evaluateRows({ rows, promptDefinition }) {
     rowCount: rows.length,
     nonEmptyCellCount,
     totalExpectedCellCount,
+    requestedCellCompletenessRatio: requiredCellCompletenessRatio,
     requiredCellCompletenessRatio,
     sourceUrlCount: sourceUrls.size,
     evidenceQuoteCount,
     duplicateIdentityCount,
+    missingRequestedCellCount: missingRequiredCells.length,
+    missingRequestedCells: missingRequiredCells,
     missingRequiredCellCount: missingRequiredCells.length,
     missingRequiredCells,
     needsReviewCount,
@@ -976,7 +1074,9 @@ async function rescoreBenchmarkRun({ runDirectory, prompts, config }) {
 
     rescoredLaneResults.push({
       ...laneResult,
+      requestedColumns: promptDefinition.requiredColumns,
       requiredColumns: promptDefinition.requiredColumns,
+      minimumRequiredColumns: minimumRequiredColumnsForPrompt(promptDefinition),
       expectedStress: promptDefinition.expectedStress,
       answerKey: answerKeyForPrompt(promptDefinition),
       status,
@@ -994,10 +1094,13 @@ async function rescoreBenchmarkRun({ runDirectory, prompts, config }) {
       rowCount: validation.rowCount,
       nonEmptyCellCount: validation.nonEmptyCellCount,
       totalExpectedCellCount: validation.totalExpectedCellCount,
+      requestedCellCompletenessRatio: validation.requestedCellCompletenessRatio,
       requiredCellCompletenessRatio: validation.requiredCellCompletenessRatio,
       sourceUrlCount: validation.sourceUrlCount,
       evidenceQuoteCount: validation.evidenceQuoteCount,
       duplicateIdentityCount: validation.duplicateIdentityCount,
+      missingRequestedCellCount: validation.missingRequestedCellCount,
+      missingRequestedCells: validation.missingRequestedCells,
       missingRequiredCellCount: validation.missingRequiredCellCount,
       missingRequiredCells: validation.missingRequiredCells,
       needsReviewCount: validation.needsReviewCount,
@@ -1292,6 +1395,9 @@ function aggregateResults(results) {
       avgRequiredCellCompletenessRatio: roundRatio(
         sum(eligibleGroup, "requiredCellCompletenessRatio") / Math.max(1, eligibleCount)
       ),
+      avgRequestedCellCompletenessRatio: roundRatio(
+        sum(eligibleGroup, "requestedCellCompletenessRatio") / Math.max(1, eligibleCount)
+      ),
       avgFactualAccuracyScore: roundRatio(
         sum(eligibleGroup, "factualAccuracyScore") / Math.max(1, eligibleCount)
       ),
@@ -1304,6 +1410,7 @@ function aggregateResults(results) {
       totalRows: sum(group, "rowCount"),
       totalEvidenceQuotes: sum(group, "evidenceQuoteCount"),
       totalSourceUrls: sum(group, "sourceUrlCount"),
+      totalMissingRequestedCells: sum(group, "missingRequestedCellCount"),
       totalMissingRequiredCells: sum(group, "missingRequiredCellCount"),
       totalDuplicateIdentities: sum(group, "duplicateIdentityCount"),
       totalPromptTokens: group.reduce((total, result) => total + result.usage.promptTokens, 0),
@@ -1330,26 +1437,26 @@ async function writeMarkdownReport(filePath, summary, prompts) {
     "",
     "## Aggregate",
     "",
-    "| System | Runs | Passed | Failed | Blocked | Pass Rate | Eligible Pass | Avg Accuracy | Avg Latency | Rows | Evidence | Sources | Completeness | Missing Required | Duplicates | Tokens In | Tokens Out | Agent Steps | Est Cost |",
+    "| System | Runs | Passed | Failed | Blocked | Pass Rate | Eligible Pass | Avg Accuracy | Avg Latency | Rows | Evidence | Sources | Completeness | Missing Requested | Duplicates | Tokens In | Tokens Out | Agent Steps | Est Cost |",
     "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ...summary.aggregate.map((row) =>
-      `| ${escapeMarkdown(row.system)} | ${row.total} | ${row.passed} | ${row.failed} | ${row.blocked} | ${row.passRate} | ${row.eligiblePassRate} | ${row.avgFactualAccuracyScore} | ${formatDuration(row.avgLatencyMs)} | ${row.totalRows} | ${row.totalEvidenceQuotes} | ${row.totalSourceUrls} | ${row.avgRequiredCellCompletenessRatio} | ${row.totalMissingRequiredCells} | ${row.totalDuplicateIdentities} | ${row.totalPromptTokens} | ${row.totalCompletionTokens} | ${row.agentStepCount} | ${formatUsd(row.estimatedTotalCostUsd)} |`
+      `| ${escapeMarkdown(row.system)} | ${row.total} | ${row.passed} | ${row.failed} | ${row.blocked} | ${row.passRate} | ${row.eligiblePassRate} | ${row.avgFactualAccuracyScore} | ${formatDuration(row.avgLatencyMs)} | ${row.totalRows} | ${row.totalEvidenceQuotes} | ${row.totalSourceUrls} | ${row.avgRequestedCellCompletenessRatio ?? row.avgRequiredCellCompletenessRatio} | ${row.totalMissingRequestedCells ?? row.totalMissingRequiredCells} | ${row.totalDuplicateIdentities} | ${row.totalPromptTokens} | ${row.totalCompletionTokens} | ${row.agentStepCount} | ${formatUsd(row.estimatedTotalCostUsd)} |`
     ),
     "",
     "## Prompt Pack",
     "",
-    "| # | Quality | Persona | Prompt | Required Columns | Stress |",
-    "| ---: | --- | --- | --- | --- | --- |",
+    "| # | Quality | Persona | Prompt | Requested Columns | Minimum Required | Stress |",
+    "| ---: | --- | --- | --- | --- | --- | --- |",
     ...prompts.map((prompt, index) =>
-      `| ${index + 1} | ${prompt.quality} | ${escapeMarkdown(prompt.persona)} | ${escapeMarkdown(prompt.prompt)} | ${prompt.requiredColumns.join(", ")} | ${escapeMarkdown(prompt.expectedStress)} |`
+      `| ${index + 1} | ${prompt.quality} | ${escapeMarkdown(prompt.persona)} | ${escapeMarkdown(prompt.prompt)} | ${prompt.requiredColumns.join(", ")} | ${minimumRequiredColumnsForPrompt(prompt).join(", ")} | ${escapeMarkdown(prompt.expectedStress)} |`
     ),
     "",
     "## Raw Results",
     "",
-    "| System | Prompt | Quality | Status | Category | Accuracy | Entity Coverage | Domain Accuracy | Latency | Rows | Completeness | Evidence | Sources | Missing Required | Duplicates | Tokens In | Tokens Out | Search | Fetch | Browser | Agent Runs | Agent Steps | Est Cost | Issue |",
+    "| System | Prompt | Quality | Status | Category | Accuracy | Entity Coverage | Domain Accuracy | Latency | Rows | Completeness | Evidence | Sources | Missing Requested | Duplicates | Tokens In | Tokens Out | Search | Fetch | Browser | Agent Runs | Agent Steps | Est Cost | Issue |",
     "| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ...summary.laneResults.map((result) =>
-      `| ${escapeMarkdown(result.system)} | ${escapeMarkdown(result.promptId)} | ${result.promptQuality} | ${result.status} | ${escapeMarkdown(result.failureCategory ?? "")} | ${result.factualAccuracyScore ?? 0} | ${result.entityCoverageRatio ?? 0} | ${result.domainAccuracyRatio ?? 0} | ${formatDuration(result.latencyMs)} | ${result.rowCount} | ${result.requiredCellCompletenessRatio} | ${result.evidenceQuoteCount} | ${result.sourceUrlCount} | ${result.missingRequiredCellCount} | ${result.duplicateIdentityCount} | ${result.usage.promptTokens} | ${result.usage.completionTokens} | ${result.searchCallCount} | ${result.fetchCallCount} | ${result.browserCallCount} | ${result.agentRunCount} | ${result.agentStepCount} | ${formatUsd(result.estimatedTotalCostUsd)} | ${escapeMarkdown(result.errorMessage ?? "")} |`
+      `| ${escapeMarkdown(result.system)} | ${escapeMarkdown(result.promptId)} | ${result.promptQuality} | ${result.status} | ${escapeMarkdown(result.failureCategory ?? "")} | ${result.factualAccuracyScore ?? 0} | ${result.entityCoverageRatio ?? 0} | ${result.domainAccuracyRatio ?? 0} | ${formatDuration(result.latencyMs)} | ${result.rowCount} | ${result.requestedCellCompletenessRatio ?? result.requiredCellCompletenessRatio} | ${result.evidenceQuoteCount} | ${result.sourceUrlCount} | ${result.missingRequestedCellCount ?? result.missingRequiredCellCount} | ${result.duplicateIdentityCount} | ${result.usage.promptTokens} | ${result.usage.completionTokens} | ${result.searchCallCount} | ${result.fetchCallCount} | ${result.browserCallCount} | ${result.agentRunCount} | ${result.agentStepCount} | ${formatUsd(result.estimatedTotalCostUsd)} | ${escapeMarkdown(result.errorMessage ?? "")} |`
     ),
     "",
   ];
@@ -1467,7 +1574,7 @@ function failureReason({
   if (validation.sourceUrlCount === 0) return "No source URLs found.";
   if (validation.evidenceQuoteCount === 0) return "No evidence quotes found.";
   if (validation.requiredCellCompletenessRatio < minRequiredCompleteness) {
-    return `Required-cell completeness ${validation.requiredCellCompletenessRatio} below ${minRequiredCompleteness}.`;
+    return `Requested-cell completeness ${validation.requiredCellCompletenessRatio} below ${minRequiredCompleteness}.`;
   }
   if (answerKeyScore && !answerKeyScore.passed) {
     if (answerKeyScore.failureCategory === "source_evidence") {

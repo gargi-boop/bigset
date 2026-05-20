@@ -7,11 +7,16 @@ const requiredColumns = requiredEnv("BIGSET_BENCHMARK_REQUIRED_COLUMNS")
   .split(",")
   .map((columnName) => columnName.trim())
   .filter(Boolean);
+const minimumRequiredColumns = (process.env.BIGSET_BENCHMARK_MINIMUM_REQUIRED_COLUMNS ?? "")
+  .split(",")
+  .map((columnName) => columnName.trim())
+  .filter(Boolean);
 
 const agentResult = await runCurrentAgent({
   prompt,
   promptId,
   requiredColumns,
+  minimumRequiredColumns,
 });
 
 console.log(JSON.stringify(toBenchmarkPayload(agentResult)));

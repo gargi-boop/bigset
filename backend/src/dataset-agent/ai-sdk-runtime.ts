@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   emptyMetrics,
   emptyUsage,
+  minimumRequiredColumnsForRunInput,
   normalizeDatasetAgentResult,
   parseOutputFromText,
 } from "./output.js";
@@ -202,25 +203,32 @@ function createToolLoopAgent(input: CreateAiSdkAgentInput): AiSdkAgentLike {
 }
 
 function createInstructions(input: DatasetAgentRunInput): string {
+  const minimumRequiredColumns = minimumRequiredColumnsForRunInput(input);
+
   return [
     "You are BigSet's dataset collection agent.",
     "Build source-backed rows from web data. Never guess missing facts.",
     "Use search first, fetch source pages next, and browser automation only when fetch cannot verify the requested value.",
     "Every row must include cells, sourceUrls, and evidence quotes copied from source text or browser output.",
     "Set needsReview true when the source is weak, ambiguous, stale, or incomplete.",
-    `Required columns: ${input.requiredColumns.join(", ")}`,
+    `Requested columns: ${input.requiredColumns.join(", ")}`,
+    `Minimum required columns for accepting a row: ${minimumRequiredColumns.join(", ") || "none"}`,
+    "Missing requested columns outside the minimum should be null or omitted, not invented.",
   ].join("\n");
 }
 
 function createPrompt(input: DatasetAgentRunInput): string {
+  const minimumRequiredColumns = minimumRequiredColumnsForRunInput(input);
+
   return JSON.stringify({
     promptId: input.promptId,
     promptQuality: input.promptQuality,
     userRequest: input.prompt,
-    requiredColumns: input.requiredColumns,
+    requestedColumns: input.requiredColumns,
+    minimumRequiredColumns,
     outputShape: {
       rows:
-        "Array of rows with cells keyed by required column, sourceUrls, evidence, needsReview.",
+        "Array of rows with cells keyed by requested column when source-backed, sourceUrls, evidence, needsReview.",
       validationIssues:
         "Concrete validation problems. Empty only when all rows are source-backed.",
     },
@@ -232,17 +240,21 @@ function createRepairPrompt(input: {
   invalidOutput: unknown;
   validationIssues: string[];
 }): string {
+  const minimumRequiredColumns = minimumRequiredColumnsForRunInput(input.input);
+
   return JSON.stringify({
     task: "Repair the previous dataset-agent output. Use tools again if needed. Return only valid source-backed rows.",
     userRequest: input.input.prompt,
-    requiredColumns: input.input.requiredColumns,
+    requestedColumns: input.input.requiredColumns,
+    minimumRequiredColumns,
     validationIssues: input.validationIssues,
     invalidOutput: input.invalidOutput,
     repairRules: [
       "Do not invent values.",
       "Every row needs at least one source URL.",
       "Every row needs at least one evidence quote.",
-      "Every required column must be present or the row should be omitted.",
+      "Every minimum required column must be present or the row should be omitted.",
+      "Requested columns outside the minimum can be null or missing when the source does not prove them.",
       "If source-backed rows cannot be produced, return rows: [] and validationIssues explaining why.",
     ],
   });

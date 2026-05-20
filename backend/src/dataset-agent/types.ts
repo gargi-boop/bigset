@@ -10,7 +10,17 @@ export interface DatasetAgentRunInput {
   prompt: string;
   promptId?: string;
   promptQuality?: string;
+  /**
+   * Columns the caller wants back for scoring/completeness. These are not all
+   * hard row-acceptance requirements.
+   */
   requiredColumns: string[];
+  /**
+   * Tiny identity fields that must be present before a row can be accepted.
+   * When omitted, the runtime infers a conservative identity column from
+   * requiredColumns.
+   */
+  minimumRequiredColumns?: string[];
 }
 
 export interface DatasetAgentEvidence {

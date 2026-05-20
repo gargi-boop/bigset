@@ -121,8 +121,87 @@ test("AI SDK runtime reports invalid source-free rows as validation issues", asy
 
   assert.match(result.validationIssues.join("\n"), /no source URL/i);
   assert.match(result.validationIssues.join("\n"), /no evidence quote/i);
-  assert.match(result.validationIssues.join("\n"), /latest_post_title/i);
+  assert.doesNotMatch(result.validationIssues.join("\n"), /latest_post_title/i);
   assert.equal(result.metrics.agentRuns, 2);
+});
+
+test("AI SDK runtime treats non-identity requested columns as completeness, not hard requirements", async () => {
+  const runtime = new AiSdkDatasetAgentRuntime({
+    model: "test/model",
+    toolProvider: fakeToolProvider(),
+    createAgent: () => ({
+      async generate() {
+        return {
+          output: {
+            rows: [
+              {
+                cells: {
+                  entity_name: "OpenAI",
+                  source_url: "https://openai.com/news",
+                },
+                sourceUrls: ["https://openai.com/news"],
+                evidence: [
+                  {
+                    columnName: "entity_name",
+                    sourceUrl: "https://openai.com/news",
+                    quote: "OpenAI",
+                  },
+                ],
+              },
+            ],
+            validationIssues: [],
+          },
+          usage: {},
+          steps: [],
+        };
+      },
+    }),
+  });
+
+  const result = await runtime.runDatasetBuild(runInput);
+
+  assert.equal(result.validationIssues.length, 0);
+  assert.equal(result.metrics.agentRuns, 1);
+});
+
+test("AI SDK runtime still rejects rows missing the conservative identity field", async () => {
+  const runtime = new AiSdkDatasetAgentRuntime({
+    model: "test/model",
+    toolProvider: fakeToolProvider(),
+    maxRepairAttempts: 0,
+    createAgent: () => ({
+      async generate() {
+        return {
+          output: {
+            rows: [
+              {
+                cells: {
+                  latest_post_title: "Release notes",
+                  source_url: "https://openai.com/news",
+                },
+                sourceUrls: ["https://openai.com/news"],
+                evidence: [
+                  {
+                    columnName: "latest_post_title",
+                    sourceUrl: "https://openai.com/news",
+                    quote: "Release notes",
+                  },
+                ],
+              },
+            ],
+            validationIssues: [],
+          },
+          usage: {},
+          steps: [],
+        };
+      },
+    }),
+  });
+
+  const result = await runtime.runDatasetBuild(runInput);
+
+  assert.match(result.validationIssues.join("\n"), /entity_name/i);
+  assert.doesNotMatch(result.validationIssues.join("\n"), /latest_post_date/i);
 });
 
 test("AI SDK runtime self-heals once when the first output fails validation", async () => {
@@ -202,7 +281,7 @@ test("AI SDK runtime keeps repair telemetry when repair is worse", async () => {
                 {
                   cells: { entity_name: "OpenAI" },
                   sourceUrls: ["https://openai.com/news"],
-                  evidence: ["OpenAI news"],
+                  evidence: [],
                 },
               ],
               validationIssues: [],
@@ -229,6 +308,7 @@ test("AI SDK runtime keeps repair telemetry when repair is worse", async () => {
   assert.equal(generateCount, 2);
   assert.equal(result.rows.length, 1);
   assert.equal(result.rows[0]?.cells.entity_name, "OpenAI");
+  assert.match(result.validationIssues.join("\n"), /no evidence quote/i);
   assert.equal(result.metrics.agentRuns, 2);
   assert.equal(result.metrics.agentSteps, 2);
   assert.deepEqual(result.usage, {

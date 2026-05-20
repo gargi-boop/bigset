@@ -48,7 +48,8 @@ Useful placeholders:
 - `{{promptJson}}`: shell-escaped JSON string for the prompt.
 - `{{prompt}}`: shell-escaped raw prompt text.
 - `{{promptId}}`: shell-escaped prompt id.
-- `{{requiredColumnsJson}}`: shell-escaped JSON array of required columns.
+- `{{requiredColumnsJson}}`: shell-escaped JSON array of requested output columns.
+- `{{minimumRequiredColumnsJson}}`: shell-escaped JSON array of minimum row-identity columns.
 
 The runner also sets env vars for each prompt:
 
@@ -56,9 +57,16 @@ The runner also sets env vars for each prompt:
 - `BIGSET_BENCHMARK_PROMPT_ID`
 - `BIGSET_BENCHMARK_PROMPT_QUALITY`
 - `BIGSET_BENCHMARK_REQUIRED_COLUMNS`
+- `BIGSET_BENCHMARK_MINIMUM_REQUIRED_COLUMNS`
 
 Most adapters should read the env vars instead of using placeholders. Use
 placeholders only when the existing agent already has a CLI that accepts args.
+
+`BIGSET_BENCHMARK_REQUIRED_COLUMNS` is the requested table shape used for
+completeness scoring. It is not a hard row-acceptance list. The hard minimum is
+`BIGSET_BENCHMARK_MINIMUM_REQUIRED_COLUMNS`, which defaults to one conservative
+identity column such as `entity_name`, `provider_name`, or `product_name`.
+Rows still need at least one source URL and evidence quote.
 
 ## Edward AI SDK Agent
 
@@ -221,8 +229,8 @@ The report includes:
 - official-domain accuracy
 - wall-clock latency
 - row count
-- required-cell completeness
-- missing required cells
+- requested-cell completeness
+- missing requested cells
 - source URL count
 - evidence quote count
 - duplicate identity count
@@ -240,7 +248,7 @@ Default pass gate:
 - command exits `0`
 - stdout contains parseable JSON
 - prompt output satisfies the prompt-specific answer key in `run-benchmark.mjs`
-- answerable prompts include rows, source URLs, evidence quotes, required cells,
+- answerable prompts include rows, source URLs, evidence quotes, requested cells,
   expected entities, and official domains
 - underspecified prompts can pass by asking for missing inputs or explicitly
   abstaining instead of inventing facts

@@ -22,6 +22,19 @@ export function emptyMetrics(): DatasetAgentMetrics {
   };
 }
 
+export function minimumRequiredColumnsForRunInput(
+  input: DatasetAgentRunInput
+): string[] {
+  const configuredMinimumColumns = uniqueStrings(
+    input.minimumRequiredColumns ?? []
+  );
+  if (configuredMinimumColumns.length > 0) {
+    return configuredMinimumColumns;
+  }
+
+  return inferConservativeMinimumRequiredColumns(input.requiredColumns);
+}
+
 export function normalizeDatasetAgentResult(input: {
   rawOutput: unknown;
   runInput: DatasetAgentRunInput;
@@ -43,7 +56,7 @@ export function normalizeDatasetAgentResult(input: {
     ),
     ...validateRows({
       rows,
-      requiredColumns: input.runInput.requiredColumns,
+      minimumRequiredColumns: minimumRequiredColumnsForRunInput(input.runInput),
     }),
   ];
 
@@ -168,7 +181,7 @@ function normalizeEvidence(
 
 function validateRows(input: {
   rows: DatasetAgentRow[];
-  requiredColumns: string[];
+  minimumRequiredColumns: string[];
 }): string[] {
   const issues: string[] = [];
   if (input.rows.length === 0) {
@@ -182,14 +195,87 @@ function validateRows(input: {
     if (row.evidence.length === 0) {
       issues.push(`Row ${rowIndex} has no evidence quote.`);
     }
-    for (const columnName of input.requiredColumns) {
+    for (const columnName of input.minimumRequiredColumns) {
       if (!isPresent(row.cells[columnName])) {
-        issues.push(`Row ${rowIndex} missing required column ${columnName}.`);
+        issues.push(`Row ${rowIndex} missing minimum required column ${columnName}.`);
       }
     }
   }
 
   return issues;
+}
+
+function inferConservativeMinimumRequiredColumns(columns: string[]): string[] {
+  const requestedColumns = uniqueStrings(columns);
+  const identityPriority = [
+    "entity_name",
+    "company_name",
+    "organization_name",
+    "provider_name",
+    "restaurant_name",
+    "store_name",
+    "business_name",
+    "bakery_name",
+    "product_name",
+    "person_name",
+    "profile_name",
+    "docs_title",
+    "latest_item_title",
+    "open_role_title",
+  ];
+  const identityUrlPriority = [
+    "company_domain",
+    "official_website",
+    "official_source_url",
+    "profile_url",
+    "linkedin_url",
+    "product_url",
+    "website_url",
+    "docs_url",
+    "careers_page_url",
+    "quote_page_url",
+    "menu_url",
+    "pricing_page_url",
+  ];
+
+  const prioritizedIdentityColumn = identityPriority.find((columnName) =>
+    requestedColumns.includes(columnName)
+  );
+  if (prioritizedIdentityColumn) {
+    return [prioritizedIdentityColumn];
+  }
+
+  const nameColumn = requestedColumns.find((columnName) =>
+    /(^|_)name$/.test(columnName)
+  );
+  if (nameColumn) {
+    return [nameColumn];
+  }
+
+  const titleColumn = requestedColumns.find((columnName) =>
+    /(^|_)title$/.test(columnName)
+  );
+  if (titleColumn) {
+    return [titleColumn];
+  }
+
+  const identityUrlColumn = identityUrlPriority.find((columnName) =>
+    requestedColumns.includes(columnName)
+  );
+  if (identityUrlColumn) {
+    return [identityUrlColumn];
+  }
+
+  const fallbackIdentityColumn = requestedColumns.find(
+    (columnName) =>
+      columnName !== "source_url" &&
+      !columnName.endsWith("_at") &&
+      !columnName.includes("score") &&
+      !columnName.startsWith("is_") &&
+      !columnName.startsWith("has_")
+  );
+
+  return fallbackIdentityColumn ? [fallbackIdentityColumn] : [];
 }
 
 function normalizeUsage(value: unknown): DatasetAgentUsage {
@@ -270,6 +356,10 @@ function stringArrayValue(value: unknown): string[] {
     return value.filter((item): item is string => typeof item === "string");
   }
   return typeof value === "string" ? [value] : [];
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.filter((value) => value.length > 0)));
 }
 
 function singleStringArray(value: unknown): string[] {
