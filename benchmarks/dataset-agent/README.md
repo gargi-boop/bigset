@@ -129,9 +129,11 @@ PR1 proves:
 - a candidate recipe only replaces the active recipe when validation or benchmark
   score improves without a regression
 
-PR2 should add the real Playwright executor, timeout handling, artifact capture,
-and sandbox boundaries. DB persistence and cron should wait until that runner is
-trustworthy.
+PR2 adds `PlaywrightRecipeRunner`, which executes the generated
+`runDatasetRecipe(context)` function with a page context, timeout, row emitter,
+and artifact capture. It can use an injected browser factory for tests or load
+Playwright dynamically at runtime when the package is available. DB persistence
+and cron should wait until sandboxing is stricter than this first runner.
 
 ## How To Plug In An Existing Agent
 

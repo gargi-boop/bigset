@@ -19,6 +19,9 @@ export {
   evaluateRecipeProductionValidation,
   FakeDatasetRecipeRuntime,
 } from "./recipe-runtime.js";
+export {
+  PlaywrightRecipeRunner,
+} from "./playwright-recipe-runner.js";
 export type {
   DatasetRecipe,
   DatasetRecipeArtifact,
@@ -28,6 +31,12 @@ export type {
   DatasetRecipeRunResult,
   DatasetRecipeRuntime,
 } from "./recipe-types.js";
+export type {
+  DatasetRecipeBrowserFactory,
+  DatasetRecipeBrowserSession,
+  DatasetRecipePageLike,
+  DatasetRecipeScriptContext,
+} from "./playwright-recipe-runner.js";
 
 export function createDatasetAgentRuntime(input: {
   runtime?: string;
