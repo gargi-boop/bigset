@@ -5,18 +5,23 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dataset-agent:benchmark": "tsx src/dataset-agent/run-benchmark-adapter.ts",
+    "collection-agent:benchmark": "tsx src/dataset-agent/run-collection-benchmark-adapter.ts",
+    "test": "node --import tsx --test test/*.test.ts",
+    "test:oracle": "node --import tsx --test test/dataset-agent-oracle.test.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "infer-schema": "tsx src/cli.ts"
   },
   "dependencies": {
     "@clerk/backend": "^3.4.11",
-    "@openrouter/ai-sdk-provider": "^2.9.0",
     "@fastify/cors": "^11.0.0",
+    "@openrouter/ai-sdk-provider": "^2.9.0",
+    "@tiny-fish/sdk": "^0.0.8",
+    "ai": "^6.0.185",
     "convex": "^1.39.1",
     "dotenv": "^16.4.0",
     "fastify": "^5.0.0",
-    "ai": "^6.0.0",
     "fastify-plugin": "^5.1.0",
     "zod": "^4.4.3"
   },
