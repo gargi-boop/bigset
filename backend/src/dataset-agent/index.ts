@@ -7,6 +7,8 @@ import type {
   DatasetAgentToolProvider,
 } from "./types.js";
 
+export const DEFAULT_DATASET_AGENT_MODEL = "google/gemini-3.1-flash-lite";
+
 export type { DatasetAgentRunInput, DatasetAgentRunResult } from "./types.js";
 export {
   applyRecipePromotionDecision,
@@ -64,7 +66,7 @@ export function createDatasetAgentRuntime(input: {
   }
 
   return new AiSdkDatasetAgentRuntime({
-    model: input.model ?? process.env.DATASET_AGENT_MODEL ?? "openai/gpt-5.4",
+    model: input.model ?? DEFAULT_DATASET_AGENT_MODEL,
     maxSteps: input.maxSteps ?? numberEnv("DATASET_AGENT_MAX_STEPS", 8),
     toolProvider,
   });
