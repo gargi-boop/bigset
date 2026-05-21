@@ -5,6 +5,9 @@ import { z } from "zod";
 import {
   emptyMetrics,
   emptyUsage,
+  entityCandidateMatchesSource,
+  entityCandidatesFromPrompt,
+  isUrlColumn,
   minimumRequiredColumnsForRunInput,
   normalizeDatasetAgentResult,
   parseOutputFromText,
@@ -244,12 +247,31 @@ function normalizeGenerationResult(input: {
   usage: DatasetAgentUsage;
   metrics: DatasetAgentMetrics;
 }) {
-  return normalizeDatasetAgentResult({
+  const normalizedResult = normalizeDatasetAgentResult({
     rawOutput: generationRawOutput(input.generation),
     runInput: input.runInput,
     usage: input.usage,
     metrics: input.metrics,
   });
+  if (normalizedResult.rows.length > 0) {
+    return normalizedResult;
+  }
+
+  const recoveredOutput = recoverOutputFromToolResults({
+    steps: input.generation.steps ?? [],
+    runInput: input.runInput,
+  });
+  if (!recoveredOutput) {
+    return normalizedResult;
+  }
+
+  const recoveredResult = normalizeDatasetAgentResult({
+    rawOutput: recoveredOutput,
+    runInput: input.runInput,
+    usage: input.usage,
+    metrics: input.metrics,
+  });
+  return recoveredResult.rows.length > 0 ? recoveredResult : normalizedResult;
 }
 
 function generationRawOutput(generation: AiSdkGenerateResultLike): unknown {
@@ -288,6 +310,171 @@ function readGenerationField<FieldName extends keyof AiSdkGenerateResultLike>(
   } catch (error) {
     return { ok: false, error };
   }
+}
+
+function recoverOutputFromToolResults(input: {
+  steps: unknown[];
+  runInput: DatasetAgentRunInput;
+}): { rows: unknown[]; validationIssues: string[] } | null {
+  const sourceBackedRows = sourceSnippetsFromSteps(input.steps)
+    .filter((snippet) =>
+      sourceSnippetMatchesPrompt({
+        snippet,
+        prompt: input.runInput.prompt,
+        minimumRequiredColumns: minimumRequiredColumnsForRunInput(input.runInput),
+      })
+    )
+    .slice(0, 12)
+    .map((snippet) => rowFromSourceSnippet(snippet, input.runInput));
+
+  if (sourceBackedRows.length === 0) {
+    return null;
+  }
+
+  return {
+    rows: sourceBackedRows,
+    validationIssues: [
+      "Recovered partial rows from tool results after the model returned no rows.",
+    ],
+  };
+}
+
+function sourceSnippetsFromSteps(steps: unknown[]): SourceSnippet[] {
+  const snippets: SourceSnippet[] = [];
+  for (const step of steps) {
+    for (const toolResult of toolResultsFromStep(step)) {
+      snippets.push(...sourceSnippetsFromToolOutput(toolResult.output));
+    }
+  }
+  return dedupeSourceSnippets(snippets);
+}
+
+interface SourceSnippet {
+  url: string;
+  title?: string;
+  text?: string;
+}
+
+function toolResultsFromStep(step: unknown): Array<{ output: unknown }> {
+  if (!isRecord(step)) {
+    return [];
+  }
+  const toolResults = step.toolResults;
+  if (!Array.isArray(toolResults)) {
+    return [];
+  }
+  return toolResults.filter(
+    (toolResult): toolResult is { output: unknown } =>
+      isRecord(toolResult) && "output" in toolResult
+  );
+}
+
+function sourceSnippetsFromToolOutput(output: unknown): SourceSnippet[] {
+  if (Array.isArray(output)) {
+    return output.flatMap(sourceSnippetsFromToolOutput);
+  }
+  if (!isRecord(output)) {
+    return [];
+  }
+
+  const url = stringValue(output.finalUrl) ?? stringValue(output.url);
+  if (!url || !/^https?:\/\//i.test(url)) {
+    return [];
+  }
+
+  return [
+    {
+      url,
+      title: stringValue(output.title),
+      text:
+        stringValue(output.snippet) ??
+        stringValue(output.text) ??
+        stringValue(output.markdown) ??
+        stringifyPayload(output.payload),
+    },
+  ];
+}
+
+function dedupeSourceSnippets(snippets: SourceSnippet[]): SourceSnippet[] {
+  const seenUrls = new Set<string>();
+  const uniqueSnippets: SourceSnippet[] = [];
+  for (const snippet of snippets) {
+    if (seenUrls.has(snippet.url)) {
+      continue;
+    }
+    seenUrls.add(snippet.url);
+    uniqueSnippets.push(snippet);
+  }
+  return uniqueSnippets;
+}
+
+function sourceSnippetMatchesPrompt(input: {
+  snippet: SourceSnippet;
+  prompt: string;
+  minimumRequiredColumns: string[];
+}): boolean {
+  if (input.minimumRequiredColumns.some((columnName) => isUrlColumn(columnName))) {
+    return true;
+  }
+
+  const sourceText = [input.snippet.url, input.snippet.title, input.snippet.text].join(" ");
+  return entityCandidatesFromPrompt(input.prompt).some((candidate) =>
+    entityCandidateMatchesSource(candidate, sourceText)
+  );
+}
+
+function rowFromSourceSnippet(
+  snippet: SourceSnippet,
+  runInput: DatasetAgentRunInput
+) {
+  const cells: Record<string, unknown> = {};
+  for (const columnName of runInput.requiredColumns) {
+    if (isUrlColumn(columnName)) {
+      cells[columnName] = snippet.url;
+    }
+  }
+
+  return {
+    cells,
+    sourceUrls: [snippet.url],
+    evidence: [
+      {
+        columnName: firstUrlColumn(runInput.requiredColumns) ?? "source_url",
+        sourceUrl: snippet.url,
+        quote: evidenceQuoteFromSnippet(snippet),
+      },
+    ],
+    needsReview: true,
+  };
+}
+
+function evidenceQuoteFromSnippet(snippet: SourceSnippet): string {
+  const rawQuote = snippet.text ?? snippet.title ?? snippet.url;
+  const normalizedQuote = rawQuote.replace(/\s+/g, " ").trim();
+  return normalizedQuote.slice(0, 500) || snippet.url;
+}
+
+function firstUrlColumn(columnNames: string[]): string | undefined {
+  return columnNames.find((columnName) => isUrlColumn(columnName));
+}
+
+function stringifyPayload(value: unknown): string | undefined {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  try {
+    return JSON.stringify(value).slice(0, 1_000);
+  } catch {
+    return undefined;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
 }
 
 function createToolLoopAgent(input: CreateAiSdkAgentInput): AiSdkAgentLike {

@@ -519,6 +519,57 @@ test("AI SDK runtime does not let repair erase source-backed rows", async () => 
   });
 });
 
+test("AI SDK runtime recovers partial rows from tool results when model returns none", async () => {
+  const runtime = new AiSdkDatasetAgentRuntime({
+    model: "test/model",
+    toolProvider: fakeToolProvider(),
+    maxRepairAttempts: 0,
+    createAgent: () => ({
+      async generate() {
+        return {
+          output: {
+            rows: [],
+            validationIssues: [],
+          },
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          steps: [
+            {
+              toolResults: [
+                {
+                  output: [
+                    {
+                      url: "https://openai.com/index/advancing-content-provenance/",
+                      title: "OpenAI news",
+                      text: "OpenAI announced updates about content provenance.",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        };
+      },
+    }),
+  });
+
+  const result = await runtime.runDatasetBuild(runInput);
+
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0]?.cells.entity_name, "OpenAI");
+  assert.equal(
+    result.rows[0]?.cells.source_url,
+    "https://openai.com/index/advancing-content-provenance/"
+  );
+  assert.equal(
+    result.rows[0]?.sourceUrls[0],
+    "https://openai.com/index/advancing-content-provenance/"
+  );
+  assert.match(
+    result.validationIssues.join("\n"),
+    /Recovered partial rows from tool results/i
+  );
+});
+
 function fakeToolProvider(): DatasetAgentToolProvider {
   return {
     async search() {

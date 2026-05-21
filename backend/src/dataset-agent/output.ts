@@ -344,7 +344,7 @@ function inferConservativeMinimumRequiredColumns(columns: string[]): string[] {
   return fallbackIdentityColumn ? [fallbackIdentityColumn] : [];
 }
 
-function isUrlColumn(columnName: string): boolean {
+export function isUrlColumn(columnName: string): boolean {
   const normalizedColumnName = columnName.toLowerCase();
   return (
     normalizedColumnName === "source_url" ||
@@ -396,7 +396,7 @@ function sourceUrlText(sourceUrl: string): string {
   }
 }
 
-function entityCandidatesFromPrompt(prompt: string): string[] {
+export function entityCandidatesFromPrompt(prompt: string): string[] {
   const candidates: string[] = [];
   const entityPattern =
     /\b[A-Z][A-Za-z0-9&.-]*(?:\s+[A-Z][A-Za-z0-9&.-]*){0,3}/g;
@@ -444,7 +444,7 @@ function trimEntityCandidate(candidate: string): string | undefined {
   return trimmedCandidate.length >= 2 ? trimmedCandidate : undefined;
 }
 
-function entityCandidateMatchesSource(
+export function entityCandidateMatchesSource(
   candidate: string,
   sourceText: string
 ): boolean {
@@ -462,7 +462,7 @@ function entityCandidateMatchesSource(
   );
 }
 
-function normalizeIdentityText(value: string): string {
+export function normalizeIdentityText(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
