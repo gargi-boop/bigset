@@ -1,7 +1,10 @@
 node_modules/
 dist/
-runs/
-memory/
+
+# Runtime artifacts at package root (do not use bare `memory/` — it also matches src/memory/)
+/runs/
+/memory/
+
 .env
 *.log
 .DS_Store

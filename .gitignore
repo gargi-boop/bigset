@@ -17,7 +17,12 @@ yarn-debug.log*
 
 # Local-only files
 *.bak
+# macOS Finder duplicate copies (e.g. "file 2.ts")
+* 2.*
 tmp/
 temp/
 
 backend/output/
+
+# Benchmark harness output (created at runtime by run-benchmark.mjs)
+benchmark-results/

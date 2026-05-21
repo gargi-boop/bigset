@@ -4,5 +4,6 @@ dist/
 *.tsbuildinfo
 drizzle/
 benchmark-results/
-backend/BigSet_Data_Collection_Agent/runs/
-backend/BigSet_Data_Collection_Agent/memory/
+# Paths relative to backend/ (not repo root)
+BigSet_Data_Collection_Agent/runs/
+BigSet_Data_Collection_Agent/memory/
