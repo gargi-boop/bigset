@@ -61,7 +61,7 @@ test("production validation rejects rows missing the conservative identity field
         rows: [
           sourceBackedRow({
             latest_post_title: "Release notes",
-            source_url: "https://openai.com/news",
+            source_url: "https://example.com/news",
           }),
         ],
         validationIssues: [],

@@ -19,6 +19,19 @@ const runInput = {
   ],
 };
 
+const pricingRunInput = {
+  prompt:
+    "For Stripe, Paddle, and Chargebee, collect official pricing page URLs and plan names.",
+  promptId: "oracle-pricing-pages",
+  promptQuality: "good",
+  requiredColumns: [
+    "entity_name",
+    "pricing_page_url",
+    "plan_or_price",
+    "source_url",
+  ],
+};
+
 test("deterministic runtime satisfies benchmark contract without secrets", async () => {
   const runtime = new DeterministicDatasetAgentRuntime();
   const result = await runtime.runDatasetBuild(runInput);
@@ -99,6 +112,135 @@ test("AI SDK runtime normalizes output and accumulates usage from step callbacks
   assert.equal(result.metrics.agentSteps, 2);
 });
 
+test("AI SDK runtime falls back to text when structured output is unavailable", async () => {
+  const runtime = new AiSdkDatasetAgentRuntime({
+    model: "test/model",
+    toolProvider: fakeToolProvider(),
+    maxRepairAttempts: 0,
+    createAgent: () => ({
+      async generate() {
+        return {
+          get output() {
+            throw new Error("No output generated.");
+          },
+          text: JSON.stringify({
+            rows: [
+              {
+                cells: {
+                  entity_name: "OpenAI",
+                  latest_post_title: "Release notes",
+                  source_url: "https://openai.com/news",
+                },
+                sourceUrls: ["https://openai.com/news"],
+                evidence: [
+                  {
+                    columnName: "entity_name",
+                    sourceUrl: "https://openai.com/news",
+                    quote: "OpenAI",
+                  },
+                ],
+              },
+            ],
+            validationIssues: [],
+          }),
+          usage: {},
+          steps: [],
+        };
+      },
+    }),
+  });
+
+  const result = await runtime.runDatasetBuild(runInput);
+
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0]?.cells.entity_name, "OpenAI");
+  assert.equal(result.validationIssues.length, 0);
+});
+
+test("AI SDK runtime fills missing cells from column-specific evidence", async () => {
+  const runtime = new AiSdkDatasetAgentRuntime({
+    model: "test/model",
+    toolProvider: fakeToolProvider(),
+    maxRepairAttempts: 0,
+    createAgent: () => ({
+      async generate() {
+        return {
+          output: {
+            rows: [
+              {
+                cells: {},
+                sourceUrls: ["https://stripe.com/pricing"],
+                evidence: [
+                  {
+                    columnName: "entity_name",
+                    sourceUrl: "https://stripe.com/pricing",
+                    quote: "Stripe",
+                  },
+                  {
+                    columnName: "source_url",
+                    sourceUrl: "https://stripe.com/pricing",
+                    quote: "https://stripe.com/pricing",
+                  },
+                ],
+              },
+            ],
+            validationIssues: [],
+          },
+          usage: {},
+          steps: [],
+        };
+      },
+    }),
+  });
+
+  const result = await runtime.runDatasetBuild(runInput);
+
+  assert.equal(result.rows[0]?.cells.entity_name, "Stripe");
+  assert.equal(result.rows[0]?.cells.source_url, "https://stripe.com/pricing");
+  assert.doesNotMatch(result.validationIssues.join("\n"), /entity_name/i);
+});
+
+test("AI SDK runtime fills URL cells and clear prompt identities from source URLs", async () => {
+  const runtime = new AiSdkDatasetAgentRuntime({
+    model: "test/model",
+    toolProvider: fakeToolProvider(),
+    maxRepairAttempts: 0,
+    createAgent: () => ({
+      async generate() {
+        return {
+          output: {
+            rows: [
+              {
+                cells: {
+                  plan_or_price: "2.9% + 30 cents",
+                },
+                sourceUrls: ["https://stripe.com/pricing"],
+                evidence: [
+                  {
+                    columnName: "plan_or_price",
+                    sourceUrl: "https://stripe.com/pricing",
+                    quote: "2.9% + 30 cents",
+                  },
+                ],
+              },
+            ],
+            validationIssues: [],
+          },
+          usage: {},
+          steps: [],
+        };
+      },
+    }),
+  });
+
+  const result = await runtime.runDatasetBuild(pricingRunInput);
+
+  assert.equal(result.rows[0]?.cells.entity_name, "Stripe");
+  assert.equal(result.rows[0]?.cells.pricing_page_url, "https://stripe.com/pricing");
+  assert.equal(result.rows[0]?.cells.source_url, "https://stripe.com/pricing");
+  assert.equal(result.validationIssues.length, 0);
+});
+
 test("AI SDK runtime reports invalid source-free rows as validation issues", async () => {
   const runtime = new AiSdkDatasetAgentRuntime({
     model: "test/model",
@@ -177,13 +319,13 @@ test("AI SDK runtime still rejects rows missing the conservative identity field"
               {
                 cells: {
                   latest_post_title: "Release notes",
-                  source_url: "https://openai.com/news",
+                  source_url: "https://example.com/news",
                 },
-                sourceUrls: ["https://openai.com/news"],
+                sourceUrls: ["https://example.com/news"],
                 evidence: [
                   {
                     columnName: "latest_post_title",
-                    sourceUrl: "https://openai.com/news",
+                    sourceUrl: "https://example.com/news",
                     quote: "Release notes",
                   },
                 ],

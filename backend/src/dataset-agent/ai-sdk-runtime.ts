@@ -1,5 +1,5 @@
 import { Output, ToolLoopAgent, stepCountIs, tool } from "ai";
-import type { ToolSet } from "ai";
+import type { LanguageModel, ToolSet } from "ai";
 import { z } from "zod";
 
 import {
@@ -57,8 +57,10 @@ interface AiSdkAgentLike {
   generate(input: { prompt: string }): Promise<AiSdkGenerateResultLike>;
 }
 
+export type DatasetAgentAiSdkModel = LanguageModel | string;
+
 interface CreateAiSdkAgentInput {
-  model: string;
+  model: DatasetAgentAiSdkModel;
   instructions: string;
   tools: ToolSet;
   maxSteps: number;
@@ -68,14 +70,14 @@ interface CreateAiSdkAgentInput {
 type AiSdkAgentFactory = (input: CreateAiSdkAgentInput) => AiSdkAgentLike;
 
 export class AiSdkDatasetAgentRuntime implements DatasetAgentRuntime {
-  private readonly model: string;
+  private readonly model: DatasetAgentAiSdkModel;
   private readonly maxSteps: number;
   private readonly maxRepairAttempts: number;
   private readonly toolProvider: DatasetAgentToolProvider;
   private readonly createAgent: AiSdkAgentFactory;
 
   constructor(input: {
-    model: string;
+    model: DatasetAgentAiSdkModel;
     toolProvider: DatasetAgentToolProvider;
     maxSteps?: number;
     maxRepairAttempts?: number;
@@ -129,7 +131,7 @@ export class AiSdkDatasetAgentRuntime implements DatasetAgentRuntime {
       agent,
       prompt: createRepairPrompt({
         input,
-        invalidOutput: firstGeneration.output ?? firstGeneration.text ?? {},
+        invalidOutput: generationRawOutput(firstGeneration),
         validationIssues: firstResult.validationIssues,
       }),
       usage,
@@ -182,18 +184,56 @@ function normalizeGenerationResult(input: {
   metrics: DatasetAgentMetrics;
 }) {
   return normalizeDatasetAgentResult({
-    rawOutput:
-      input.generation.output ??
-      (input.generation.text ? parseOutputFromText(input.generation.text) : {}),
+    rawOutput: generationRawOutput(input.generation),
     runInput: input.runInput,
     usage: input.usage,
     metrics: input.metrics,
   });
 }
 
+function generationRawOutput(generation: AiSdkGenerateResultLike): unknown {
+  const outputField = readGenerationField(generation, "output");
+  if (
+    outputField.ok &&
+    outputField.value !== undefined &&
+    outputField.value !== null
+  ) {
+    return outputField.value;
+  }
+
+  const textField = readGenerationField(generation, "text");
+  if (textField.ok && typeof textField.value === "string") {
+    return parseOutputFromText(textField.value);
+  }
+
+  return {
+    rows: [],
+    validationIssues: [
+      outputField.ok
+        ? "AI SDK generated no structured output."
+        : `AI SDK structured output unavailable: ${errorMessage(outputField.error)}`,
+    ],
+  };
+}
+
+function readGenerationField<FieldName extends keyof AiSdkGenerateResultLike>(
+  generation: AiSdkGenerateResultLike,
+  fieldName: FieldName
+):
+  | { ok: true; value: AiSdkGenerateResultLike[FieldName] }
+  | { ok: false; error: unknown } {
+  try {
+    return { ok: true, value: generation[fieldName] };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
 function createToolLoopAgent(input: CreateAiSdkAgentInput): AiSdkAgentLike {
   return new ToolLoopAgent({
     model: input.model,
+    temperature: 0,
+    maxOutputTokens: 3_000,
     instructions: input.instructions,
     tools: input.tools,
     output: Output.object({ schema: datasetAgentOutputSchema }),
@@ -210,6 +250,10 @@ function createInstructions(input: DatasetAgentRunInput): string {
     "Build source-backed rows from web data. Never guess missing facts.",
     "Use search first, fetch source pages next, and browser automation only when fetch cannot verify the requested value.",
     "Every row must include cells, sourceUrls, and evidence quotes copied from source text or browser output.",
+    "Put the actual extracted values in cells. Evidence supports cells; evidence does not replace cells.",
+    "For named entities in the user request, return one row per entity when an official source can back the identity and at least one requested value.",
+    "Do not return zero rows after fetching official sources. Return partial source-backed rows with needsReview true when optional requested values are incomplete.",
+    "Once enough official evidence is found for the requested entities, stop searching and return the rows.",
     "Set needsReview true when the source is weak, ambiguous, stale, or incomplete.",
     `Requested columns: ${input.requiredColumns.join(", ")}`,
     `Minimum required columns for accepting a row: ${minimumRequiredColumns.join(", ") || "none"}`,
@@ -228,7 +272,7 @@ function createPrompt(input: DatasetAgentRunInput): string {
     minimumRequiredColumns,
     outputShape: {
       rows:
-        "Array of rows with cells keyed by requested column when source-backed, sourceUrls, evidence, needsReview.",
+        "Array of rows with cells keyed by requested column when source-backed. cells must contain the extracted values; sourceUrls and evidence prove them.",
       validationIssues:
         "Concrete validation problems. Empty only when all rows are source-backed.",
     },
@@ -253,6 +297,7 @@ function createRepairPrompt(input: {
       "Do not invent values.",
       "Every row needs at least one source URL.",
       "Every row needs at least one evidence quote.",
+      "Every source-backed value must be written into cells under the matching requested column.",
       "Every minimum required column must be present or the row should be omitted.",
       "Requested columns outside the minimum can be null or missing when the source does not prove them.",
       "If source-backed rows cannot be produced, return rows: [] and validationIssues explaining why.",
@@ -328,4 +373,8 @@ function addUsage(target: DatasetAgentUsage, usage?: AiSdkUsageLike) {
 function numericValue(value: unknown): number {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

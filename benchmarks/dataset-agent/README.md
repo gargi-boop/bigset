@@ -78,8 +78,9 @@ node benchmarks/dataset-agent/run-benchmark.mjs \
   --system edward='node benchmarks/dataset-agent/adapters/edward-ai-sdk-adapter.mjs'
 ```
 
-The code default is OpenRouter `google/gemini-3.1-flash-lite`. Do not use a
-direct OpenAI key for this benchmark path.
+The code default is OpenRouter `google/gemini-3.1-flash-lite` via
+`@openrouter/ai-sdk-provider`. Do not use a direct OpenAI key or AI Gateway key
+for this benchmark path.
 
 It uses the backend script:
 
@@ -108,7 +109,8 @@ If the canary is blocked by auth, credits, quota, rate limits, or timeout, fix t
 before running the full 16 prompts.
 
 Real AI SDK runs require `OPENROUTER_API_KEY` and `TINYFISH_API_KEY` loaded
-execution-only. Do not commit local env files.
+execution-only. Do not set `DATASET_AGENT_MODEL` unless you want to override the
+OpenRouter model id in code. Do not commit local env files.
 
 ## Recipe Healer Prototype
 

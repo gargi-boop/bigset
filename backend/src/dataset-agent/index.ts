@@ -1,3 +1,6 @@
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import type { LanguageModel } from "ai";
+
 import { AiSdkDatasetAgentRuntime } from "./ai-sdk-runtime.js";
 import { DeterministicDatasetAgentRuntime } from "./deterministic-runtime.js";
 import { createTinyFishToolProvider } from "./tinyfish-tools.js";
@@ -66,7 +69,9 @@ export function createDatasetAgentRuntime(input: {
   }
 
   return new AiSdkDatasetAgentRuntime({
-    model: input.model ?? DEFAULT_DATASET_AGENT_MODEL,
+    model: createOpenRouterDatasetAgentModel(
+      input.model ?? DEFAULT_DATASET_AGENT_MODEL
+    ),
     maxSteps: input.maxSteps ?? numberEnv("DATASET_AGENT_MAX_STEPS", 8),
     toolProvider,
   });
@@ -79,4 +84,17 @@ export async function runDatasetAgentFromEnv(input: DatasetAgentRunInput) {
 function numberEnv(name: string, fallback: number): number {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function createOpenRouterDatasetAgentModel(modelId: string): LanguageModel {
+  if (!process.env.OPENROUTER_API_KEY) {
+    throw new Error(
+      "Missing OPENROUTER_API_KEY. Load it execution-only for the OpenRouter Gemini dataset-agent model."
+    );
+  }
+
+  return createOpenRouter({
+    apiKey: process.env.OPENROUTER_API_KEY,
+    appName: "BigSet Dataset Agent",
+  })(modelId);
 }

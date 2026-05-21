@@ -47,7 +47,7 @@ export function normalizeDatasetAgentResult(input: {
       outputRecord.data ??
       outputRecord.records ??
       outputRecord.result
-  ).map(normalizeRow);
+  ).map((row) => normalizeRow(row, input.runInput));
   const validationIssues = [
     ...stringArrayValue(
       outputRecord.validationIssues ??
@@ -90,15 +90,27 @@ export function parseOutputFromText(text: string): unknown {
   }
 }
 
-function normalizeRow(row: unknown): DatasetAgentRow {
+function normalizeRow(row: unknown, runInput: DatasetAgentRunInput): DatasetAgentRow {
   const rowRecord = isRecord(row) ? row : {};
-  const cells = normalizeCells(rowRecord.cells ?? rowRecord.data ?? rowRecord);
-  const sourceUrls = normalizeSourceUrls(rowRecord, cells);
+  const explicitCells = normalizeCells(
+    rowRecord.cells ?? rowRecord.data ?? rowRecord
+  );
+  const sourceUrls = normalizeSourceUrls(rowRecord, explicitCells);
+  const evidence = normalizeEvidence(rowRecord, sourceUrls);
+  const evidenceBackedCells = fillMissingCellsFromEvidence(
+    explicitCells,
+    evidence
+  );
+  const cells = fillMissingCellsFromRunContext({
+    cells: evidenceBackedCells,
+    sourceUrls,
+    runInput,
+  });
 
   return {
     cells,
     sourceUrls,
-    evidence: normalizeEvidence(rowRecord, sourceUrls),
+    evidence,
     needsReview: rowRecord.needsReview === true || rowRecord.needs_review === true,
   };
 }
@@ -130,6 +142,60 @@ function normalizeCellValue(value: unknown): DatasetAgentCellValue {
     return value;
   }
   return null;
+}
+
+function fillMissingCellsFromEvidence(
+  cells: Record<string, DatasetAgentCellValue>,
+  evidence: DatasetAgentEvidence[]
+): Record<string, DatasetAgentCellValue> {
+  const filledCells = { ...cells };
+
+  for (const item of evidence) {
+    const columnName = item.columnName.trim();
+    const quote = item.quote.trim();
+    if (!columnName || !quote || isPresent(filledCells[columnName])) {
+      continue;
+    }
+    filledCells[columnName] = quote;
+  }
+
+  return filledCells;
+}
+
+function fillMissingCellsFromRunContext(input: {
+  cells: Record<string, DatasetAgentCellValue>;
+  sourceUrls: string[];
+  runInput: DatasetAgentRunInput;
+}): Record<string, DatasetAgentCellValue> {
+  const filledCells = { ...input.cells };
+  const firstSourceUrl = input.sourceUrls[0];
+
+  if (firstSourceUrl) {
+    for (const columnName of input.runInput.requiredColumns) {
+      if (isUrlColumn(columnName) && !isPresent(filledCells[columnName])) {
+        filledCells[columnName] = firstSourceUrl;
+      }
+    }
+  }
+
+  const identityColumnName = minimumRequiredColumnsForRunInput(
+    input.runInput
+  ).find((columnName) => isIdentityColumn(columnName));
+  if (
+    identityColumnName &&
+    !isPresent(filledCells[identityColumnName]) &&
+    input.sourceUrls.length > 0
+  ) {
+    const entityName = inferEntityNameFromPromptAndSourceUrls({
+      prompt: input.runInput.prompt,
+      sourceUrls: input.sourceUrls,
+    });
+    if (entityName) {
+      filledCells[identityColumnName] = entityName;
+    }
+  }
+
+  return filledCells;
 }
 
 function normalizeSourceUrls(
@@ -276,6 +342,128 @@ function inferConservativeMinimumRequiredColumns(columns: string[]): string[] {
   );
 
   return fallbackIdentityColumn ? [fallbackIdentityColumn] : [];
+}
+
+function isUrlColumn(columnName: string): boolean {
+  const normalizedColumnName = columnName.toLowerCase();
+  return (
+    normalizedColumnName === "source_url" ||
+    normalizedColumnName.endsWith("_url") ||
+    normalizedColumnName.endsWith("_website") ||
+    normalizedColumnName === "official_website" ||
+    normalizedColumnName === "company_website" ||
+    normalizedColumnName === "website_or_menu_url"
+  );
+}
+
+function isIdentityColumn(columnName: string): boolean {
+  return [
+    "entity_name",
+    "company_name",
+    "organization_name",
+    "provider_name",
+    "restaurant_name",
+    "store_name",
+    "business_name",
+    "bakery_name",
+    "product_name",
+    "person_name",
+    "profile_name",
+  ].includes(columnName);
+}
+
+function inferEntityNameFromPromptAndSourceUrls(input: {
+  prompt: string;
+  sourceUrls: string[];
+}): string | undefined {
+  const sourceText = input.sourceUrls
+    .map((sourceUrl) => sourceUrlText(sourceUrl))
+    .join(" ");
+  const matchingCandidates = entityCandidatesFromPrompt(input.prompt).filter(
+    (candidate) => entityCandidateMatchesSource(candidate, sourceText)
+  );
+  const uniqueMatches = uniqueStrings(matchingCandidates);
+
+  return uniqueMatches.length === 1 ? uniqueMatches[0] : undefined;
+}
+
+function sourceUrlText(sourceUrl: string): string {
+  try {
+    const url = new URL(sourceUrl);
+    return `${url.hostname} ${url.pathname}`;
+  } catch {
+    return sourceUrl;
+  }
+}
+
+function entityCandidatesFromPrompt(prompt: string): string[] {
+  const candidates: string[] = [];
+  const entityPattern =
+    /\b[A-Z][A-Za-z0-9&.-]*(?:\s+[A-Z][A-Za-z0-9&.-]*){0,3}/g;
+
+  for (const match of prompt.matchAll(entityPattern)) {
+    const candidate = trimEntityCandidate(match[0]);
+    if (candidate) {
+      candidates.push(candidate);
+    }
+  }
+
+  return uniqueStrings(candidates);
+}
+
+function trimEntityCandidate(candidate: string): string | undefined {
+  const stopWords = new Set([
+    "a",
+    "an",
+    "and",
+    "can",
+    "for",
+    "from",
+    "i",
+    "in",
+    "of",
+    "or",
+    "the",
+    "to",
+    "url",
+    "with",
+  ]);
+  const words = candidate.split(/\s+/).filter(Boolean);
+
+  while (words.length > 0 && stopWords.has(words[0].toLowerCase())) {
+    words.shift();
+  }
+  while (
+    words.length > 0 &&
+    stopWords.has(words[words.length - 1].toLowerCase())
+  ) {
+    words.pop();
+  }
+
+  const trimmedCandidate = words.join(" ").trim();
+  return trimmedCandidate.length >= 2 ? trimmedCandidate : undefined;
+}
+
+function entityCandidateMatchesSource(
+  candidate: string,
+  sourceText: string
+): boolean {
+  const normalizedSourceText = normalizeIdentityText(sourceText);
+  const candidateTokens = candidate
+    .split(/\s+/)
+    .map(normalizeIdentityText)
+    .filter((token) => token.length > 1);
+  const compactCandidate = candidateTokens.join("");
+
+  return (
+    compactCandidate.length > 1 &&
+    (normalizedSourceText.includes(compactCandidate) ||
+      candidateTokens.every((token) => normalizedSourceText.includes(token)))
+  );
+}
+
+function normalizeIdentityText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 function normalizeUsage(value: unknown): DatasetAgentUsage {

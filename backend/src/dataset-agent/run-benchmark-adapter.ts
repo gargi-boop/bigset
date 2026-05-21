@@ -1,6 +1,12 @@
-import "dotenv/config";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { config as loadDotenv } from "dotenv";
 
 import { runDatasetAgentFromEnv } from "./index.js";
+
+loadBenchmarkEnvFiles();
 
 const prompt = requiredEnv("BIGSET_BENCHMARK_PROMPT");
 const promptId = process.env.BIGSET_BENCHMARK_PROMPT_ID;
@@ -37,4 +43,28 @@ function requiredEnv(name: string): string {
     throw new Error(`Missing ${name}. Run through run-benchmark.mjs.`);
   }
   return value;
+}
+
+function loadBenchmarkEnvFiles() {
+  const backendDirectory = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "../.."
+  );
+  const repoDirectory = resolve(backendDirectory, "..");
+  const envPaths = [
+    join(repoDirectory, ".env"),
+    join(repoDirectory, ".env.local"),
+    join(repoDirectory, ".env.development"),
+    join(repoDirectory, ".env.development.local"),
+    join(backendDirectory, ".env"),
+    join(backendDirectory, ".env.local"),
+    join(backendDirectory, ".env.development"),
+    join(backendDirectory, ".env.development.local"),
+  ];
+
+  for (const envPath of envPaths) {
+    if (existsSync(envPath)) {
+      loadDotenv({ path: envPath, override: false });
+    }
+  }
 }
