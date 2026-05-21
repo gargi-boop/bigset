@@ -22,6 +22,13 @@ export {
 export {
   PlaywrightRecipeRunner,
 } from "./playwright-recipe-runner.js";
+export {
+  FileSystemDatasetRecipeStore,
+  InMemoryDatasetRecipeStore,
+} from "./recipe-store.js";
+export {
+  SelfHealingRecipeService,
+} from "./self-healing-recipe-service.js";
 export type {
   DatasetRecipe,
   DatasetRecipeArtifact,
@@ -31,6 +38,19 @@ export type {
   DatasetRecipeRunResult,
   DatasetRecipeRuntime,
 } from "./recipe-types.js";
+export type {
+  DatasetRecipeStore,
+  DatasetRecipeStoreSnapshot,
+  StoredDatasetRecipeRunRecord,
+} from "./recipe-store.js";
+export type {
+  DatasetRecipeAuthor,
+  DatasetRecipeAuthorGenerateInput,
+  DatasetRecipeAuthorRepairInput,
+  DatasetRecipeBenchmarkScorer,
+  SelfHealingRecipeAction,
+  SelfHealingRecipeTickResult,
+} from "./self-healing-recipe-service.js";
 export type {
   DatasetRecipeBrowserFactory,
   DatasetRecipeBrowserSession,
