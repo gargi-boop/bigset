@@ -1,0 +1,85 @@
+%% BigSet Data Collection Agent — v1.4 architecture (shareable diagram)
+%% Render: npx -y @mermaid-js/mermaid-cli -i architecture-flowchart.mmd -o architecture-flowchart.png -b white
+
+flowchart TB
+  subgraph ENTRY["Entry points"]
+    CLI["CLI: collect run / refresh"]
+    BENCH["Benchmark: collection-pipeline adapter"]
+  end
+
+  subgraph EXT["External services"]
+    OR["OpenRouter LLM<br/>Vercel AI SDK"]
+    TS["Tinyfish Search"]
+    TF["Tinyfish Fetch"]
+    TA["Tinyfish Agent<br/>async queue + poll"]
+  end
+
+  subgraph MEM["Workflow memory"]
+    WM[("memory/{fingerprint}.json<br/>query_stats · domain_stats<br/>agent_goal_stats · diagnoses")]
+  end
+
+  S0["0 · Prompt intake<br/>target rows · flags"]
+  S1["1 · Dataset Spec Agent<br/>dataset_spec.json"]
+  S2["2 · Source discovery<br/>search → rank URLs"]
+  S3["3 · Fetch<br/>markdown pages"]
+  S4["4 · Source Triage Agent<br/>per-page routing"]
+
+  subgraph ACQ["Acquisition phase (process-pages)"]
+    EXN["extract_now →<br/>Extraction Agent"]
+    AGN["requires_* →<br/>Agent Goal → Tinyfish Agent<br/>→ extract-from-agent"]
+    SKIP["irrelevant / duplicate / blocked<br/>→ skip"]
+  end
+
+  S6["6 · Merge<br/>dedupe by primary key"]
+  S7["7 · Quality scoring<br/>per-field confidence"]
+  S8["8 · Coverage analysis"]
+
+  subgraph REPAIR["Repair loop (optional)"]
+    RD["Repair Diagnosis"]
+    RQ["Repair Queries +<br/>pagination plan"]
+    ACQ2["Acquisition repair_N<br/>search · fetch · triage · extract/agent"]
+    MRG["mergeRepairIntoExisting"]
+    RD --> RQ --> ACQ2 --> MRG
+  end
+
+  S10["10 · Export<br/>results.csv selective<br/>results_full.csv · evidence · run_report"]
+
+  CLI --> S0
+  BENCH --> S0
+  S0 --> S1
+  WM -.-> S1
+  S1 --> S2
+  S2 --> TS
+  TS --> S2
+  S2 --> S3
+  S3 --> TF
+  TF --> S3
+  S3 --> S4
+  WM -.-> S4
+  S4 --> EXN
+  S4 --> AGN
+  S4 --> SKIP
+  EXN --> OR
+  AGN --> OR
+  AGN --> TA
+  TA --> AGN
+  EXN --> S6
+  AGN --> S6
+  S6 --> S7
+  S7 --> S8
+  S8 -->|"gaps + repair on"| REPAIR
+  MRG --> S7
+  S8 -->|"satisfied or repair off"| S10
+  REPAIR -->|"loop until cap or done"| S8
+  WM -.-> S2
+  WM -.-> EXN
+  WM -.-> AGN
+  WM -.-> REPAIR
+  S10 --> OUT[("runs/{run_id}/ artifacts")]
+
+  classDef llm fill:#e8f4fc,stroke:#2563eb,color:#1e3a5f
+  classDef tiny fill:#fef3c7,stroke:#d97706,color:#78350f
+  classDef store fill:#f0fdf4,stroke:#16a34a,color:#14532d
+  class S1,S4,EXN,AGN,RD,RQ llm
+  class TS,TF,TA tiny
+  class WM,OUT store

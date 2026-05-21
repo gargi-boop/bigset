@@ -1,4 +1,5 @@
 import { AiSdkDatasetAgentRuntime } from "./ai-sdk-runtime.js";
+import { CollectionPipelineRuntime } from "./collection-pipeline-runtime.js";
 import { DeterministicDatasetAgentRuntime } from "./deterministic-runtime.js";
 import { createTinyFishToolProvider } from "./tinyfish-tools.js";
 import type {
@@ -19,6 +20,10 @@ export function createDatasetAgentRuntime(input: {
 
   if (runtime === "deterministic") {
     return new DeterministicDatasetAgentRuntime();
+  }
+
+  if (runtime === "collection") {
+    return new CollectionPipelineRuntime();
   }
 
   const toolProvider =

@@ -1,0 +1,36 @@
+{
+  "name": "bigset-data-collection-agent",
+  "version": "1.4.0",
+  "description": "Experimental agent pipeline: user prompt → structured CSV via Tinyfish + OpenRouter",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "bigset-collector": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli.js",
+    "collect": "tsx src/cli.ts",
+    "collect:benchmark": "tsx scripts/run-benchmark-cli.ts",
+    "run": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MMeteorL/BigSet_Data_Collection_Agent.git"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "@openrouter/ai-sdk-provider": "^2.9.0",
+    "@tiny-fish/sdk": "^0.0.8",
+    "ai": "^6.0.185",
+    "commander": "^14.0.3",
+    "dotenv": "^17.4.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.8.0",
+    "tsx": "^4.22.1",
+    "typescript": "^6.0.3"
+  }
+}

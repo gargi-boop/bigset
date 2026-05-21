@@ -36,12 +36,23 @@ For two agents:
 
 ```bash
 node benchmarks/dataset-agent/run-benchmark.mjs \
-  --system mengzhe='node benchmarks/dataset-agent/adapters/local-mengzhe-adapter.mjs' \
-  --system edward='node benchmarks/dataset-agent/adapters/edward-ai-sdk-adapter.mjs'
+  --system mengzhe='node benchmarks/dataset-agent/adapters/collection-pipeline-adapter.mjs' \
+  --system edward='node benchmarks/dataset-agent/adapters/ai-sdk-adapter.mjs'
 ```
 
 Local adapter files are gitignored, so people can wire their own branch without
 committing secrets, private paths, or messy prototype code.
+
+### Collection CLI with full artifacts (agent on)
+
+To replay every `prompts.json` entry on the collection CLI with benchmark
+`requiredColumns`, Tinyfish agent enabled, and persistent `run_report.json` /
+CSVs under `runs/benchmark-cli/`, see [CLI_BENCHMARK.md](CLI_BENCHMARK.md) or run:
+
+```bash
+cd backend/BigSet_Data_Collection_Agent
+npm run collect:benchmark
+```
 
 Useful placeholders:
 
@@ -60,21 +71,46 @@ The runner also sets env vars for each prompt:
 Most adapters should read the env vars instead of using placeholders. Use
 placeholders only when the existing agent already has a CLI that accepts args.
 
-## Edward AI SDK Agent
+## Adapters
 
-This branch includes Edward's AI SDK dataset agent adapter:
+Committed adapters live under `benchmarks/dataset-agent/adapters/`:
+
+| Adapter | Agent |
+| --- | --- |
+| `collection-pipeline-adapter.mjs` | BigSet multi-phase collection pipeline |
+| `ai-sdk-adapter.mjs` | AI SDK ToolLoop dataset agent |
+| `smoke-adapter.mjs` | Deterministic harness smoke |
+| `template-adapter.mjs` | Copy to `local-*.mjs` for experiments |
+
+Shared helper: `adapters/lib/spawn-backend-benchmark.mjs` (runs backend tsx entry scripts).
+
+## Collection pipeline agent
+
+```bash
+DATASET_AGENT_RUNTIME=collection \
+node benchmarks/dataset-agent/run-benchmark.mjs \
+  --system mengzhe='node benchmarks/dataset-agent/adapters/collection-pipeline-adapter.mjs'
+```
+
+For local no-secret smoke tests:
+
+```bash
+DATASET_AGENT_RUNTIME=collection \
+COLLECTION_AGENT_RUNTIME=deterministic \
+node benchmarks/dataset-agent/run-benchmark.mjs \
+  --prompts benchmarks/dataset-agent/prompts-smoke.json \
+  --system mengzhe='node benchmarks/dataset-agent/adapters/collection-pipeline-adapter.mjs'
+```
+
+Real collection runs require `TINYFISH_API_KEY` and `OPENROUTER_API_KEY` loaded execution-only.
+
+## AI SDK dataset agent
 
 ```bash
 DATASET_AGENT_RUNTIME=ai-sdk \
 DATASET_AGENT_MODEL=openai/gpt-5.4 \
 node benchmarks/dataset-agent/run-benchmark.mjs \
-  --system edward='node benchmarks/dataset-agent/adapters/edward-ai-sdk-adapter.mjs'
-```
-
-It uses the backend script:
-
-```bash
-npm --prefix backend run dataset-agent:benchmark
+  --system edward='node benchmarks/dataset-agent/adapters/ai-sdk-adapter.mjs'
 ```
 
 For local no-secret smoke tests, use deterministic mode:
@@ -82,7 +118,7 @@ For local no-secret smoke tests, use deterministic mode:
 ```bash
 DATASET_AGENT_RUNTIME=deterministic \
 node benchmarks/dataset-agent/run-benchmark.mjs \
-  --system edward='node benchmarks/dataset-agent/adapters/edward-ai-sdk-adapter.mjs'
+  --system edward='node benchmarks/dataset-agent/adapters/ai-sdk-adapter.mjs'
 ```
 
 Real AI SDK runs require model auth plus `TINYFISH_API_KEY` loaded execution-only.

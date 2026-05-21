@@ -10,6 +10,10 @@ export interface DatasetAgentRunInput {
   prompt: string;
   promptId?: string;
   promptQuality?: string;
+  /** Benchmark prompts.json — who wrote the prompt (reporting / spec context). */
+  persona?: string;
+  /** Benchmark prompts.json — what the prompt is meant to stress (spec/search hints). */
+  expectedStress?: string;
   requiredColumns: string[];
 }
 

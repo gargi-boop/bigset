@@ -3,3 +3,6 @@ dist/
 .env
 *.tsbuildinfo
 drizzle/
+benchmark-results/
+backend/BigSet_Data_Collection_Agent/runs/
+backend/BigSet_Data_Collection_Agent/memory/

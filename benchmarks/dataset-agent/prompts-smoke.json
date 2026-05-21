@@ -1,0 +1,18 @@
+[
+  {
+    "id": "latest-ai-blog-posts",
+    "quality": "good",
+    "persona": "technical operator",
+    "prompt": "Can you make me a table of the latest blog posts from OpenAI, Anthropic, and Google DeepMind? I need title, publish date, and URL.",
+    "requiredColumns": ["entity_name", "latest_post_title", "latest_post_date", "source_url"],
+    "expectedStress": "Clear entities and fields; tests current web facts with low ambiguity."
+  },
+  {
+    "id": "saas-pricing-pages",
+    "quality": "good",
+    "persona": "startup founder",
+    "prompt": "For Stripe, Paddle, and Chargebee, collect the official pricing page URL and the plan names or starting prices shown on the page.",
+    "requiredColumns": ["entity_name", "pricing_page_url", "plan_or_price", "source_url"],
+    "expectedStress": "Official pricing evidence; should not require a browser agent unless pricing is hidden."
+  }
+]

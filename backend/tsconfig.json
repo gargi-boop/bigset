@@ -7,10 +7,15 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "dist",
+    "rootDir": ".",
     "declaration": true,
     "resolveJsonModule": true,
     "isolatedModules": true
   },
-  "include": ["src", "../frontend/convex/_generated"],
+  "include": [
+    "src",
+    "BigSet_Data_Collection_Agent/src",
+    "../frontend/convex/_generated"
+  ],
   "exclude": ["node_modules", "dist"]
 }
