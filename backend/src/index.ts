@@ -4,6 +4,8 @@ import fastifyCors from "@fastify/cors";
 import { env } from "./env.js";
 import clerkAuthPlugin, { requireAuth } from "./clerk-auth.js";
 import { inferSchema } from "./pipeline/schema-inference.js";
+import { datasetContextSchema } from "./pipeline/populate.js";
+import { populateWorkflow } from "./mastra/workflows/populate.js";
 
 const fastify = Fastify({ logger: true });
 
@@ -45,6 +47,32 @@ await fastify.register(async (instance) => {
     } catch (err) {
       req.log.error(err, "Schema inference failed");
       return reply.code(502).send({ error: "Schema inference failed. Please try again." });
+    }
+  });
+
+  instance.post("/populate", async (req, reply) => {
+    const parsed = datasetContextSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: "Invalid request",
+        details: parsed.error.flatten().fieldErrors,
+      });
+    }
+
+    try {
+      const run = await populateWorkflow.createRun();
+      const result = await run.start({ inputData: parsed.data });
+
+      req.log.info({ workflowStatus: result.status, steps: JSON.stringify(result.steps).slice(0, 2000) }, "Populate workflow completed");
+
+      if (result.status !== "success") {
+        throw new Error(`Workflow ended with status: ${result.status}`);
+      }
+
+      return { success: true, result: result.result };
+    } catch (err) {
+      req.log.error(err, "Populate failed");
+      return reply.code(502).send({ error: "Failed to populate dataset. Please try again." });
     }
   });
 });
