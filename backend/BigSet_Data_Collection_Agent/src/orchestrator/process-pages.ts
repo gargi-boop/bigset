@@ -26,6 +26,7 @@ import {
 } from "../queue/pools.js";
 import { saveJson, type RunPaths } from "../storage/run-store.js";
 import { getDomain } from "../utils/url.js";
+import { explicitBrowserActionsFromAgentResult } from "./browser-actions.js";
 import { join } from "node:path";
 
 export interface AgentDeferredEntry {
@@ -408,6 +409,11 @@ export async function processFetchedPages(options: {
           return;
         }
 
+        const browserActions = explicitBrowserActionsFromAgentResult({
+          agentResult: run.result,
+          pageUrl,
+        });
+
         try {
           const agentRecords = await extractFromAgentResult({
             spec: options.spec,
@@ -432,6 +438,9 @@ export async function processFetchedPages(options: {
             agent_status: run.status,
             goal: job.goal,
             records_extracted: agentRecords.length,
+            browser_actions: browserActions.length > 0
+              ? browserActions
+              : undefined,
           });
 
           options.log(
@@ -450,6 +459,9 @@ export async function processFetchedPages(options: {
             goal: job.goal,
             records_extracted: 0,
             error: msg,
+            browser_actions: browserActions.length > 0
+              ? browserActions
+              : undefined,
           });
         }
       },

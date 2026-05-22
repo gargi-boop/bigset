@@ -108,6 +108,12 @@ second. This is an ingestion contract for a future Meteor/Mengzhe producer or
 Agent canary; it does not mean the current vendored pipeline already emits
 browser actions.
 
+When TinyFish Agent result JSON includes explicit `browser_actions` or
+`agent_browser_actions`, the vendored runner preserves those arrays in
+`agent_runs_*.json` and phase-scoped `run_report.json` fields. Generic
+`actions` arrays are ignored because they are not browser-specific enough to
+replay honestly.
+
 ## Verify Self-Healing Stack
 
 Use this before asking someone else to migrate a new collection agent into the

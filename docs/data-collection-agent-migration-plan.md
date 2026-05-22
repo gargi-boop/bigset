@@ -100,6 +100,9 @@ The current layer now can:
 - ingest explicit collection runner `browser_actions` /
   `agent_browser_actions` report fields into `browser` trace steps without
   inferring missing clicks, selectors, or form inputs from source URLs
+- preserve explicit `browser_actions` from TinyFish Agent results in
+  `agent_runs_*.json`, `run_report.initial.agent_browser_actions`, repair-loop
+  `agent_browser_actions`, without duplicating them into top-level report fields
 - map browser action reports mechanically: `target_text` to `targetText`,
   `value_description` to `valueDescription`, `status` to the trace-step status,
   `error` to the trace-step error, `phase` to `step.input.phase`, and unknown
@@ -249,6 +252,12 @@ For the Playwright handoff, Meteor can optionally emit `browser_actions` and
 order and appends `browser_actions` before `agent_browser_actions` when both are
 present in the same report scope. This is a wrapper ingestion contract only; the
 current vendored pipeline is not claimed to emit those fields yet.
+
+If TinyFish Agent result JSON includes explicit `browser_actions` or
+`agent_browser_actions`, the vendored runner now carries those arrays into the
+saved Agent run records and phase-scoped run report fields. Generic `actions`
+arrays are intentionally ignored because they are not a browser-specific
+contract.
 
 The real benchmark command after a runner module exists is:
 
