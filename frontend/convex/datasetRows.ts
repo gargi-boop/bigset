@@ -124,6 +124,11 @@ export const replaceByDataset = internalMutation({
     })),
   },
   handler: async (ctx, args) => {
+    const dataset = await ctx.db.get(args.datasetId);
+    if (!dataset) {
+      throw new Error("Dataset not found");
+    }
+
     const existingRows = await ctx.db
       .query("datasetRows")
       .withIndex("by_dataset", (q) => q.eq("datasetId", args.datasetId))

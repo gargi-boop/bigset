@@ -14,6 +14,17 @@ test("populate runtime prerequisite check reports every missing key", () => {
   ]);
 });
 
+test("populate runtime prerequisite check skips Convex admin key for dry runs", () => {
+  assert.deepEqual(
+    missingPopulateRuntimePrerequisites({
+      openRouterApiKey: "openrouter",
+      tinyFishApiKey: "tinyfish",
+      shouldCommitRows: false,
+    }),
+    []
+  );
+});
+
 test("populate runtime prerequisite check passes when all keys are configured", () => {
   const input = {
     convexAdminKey: "convex",

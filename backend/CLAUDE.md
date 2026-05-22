@@ -9,7 +9,7 @@ Fastify serves the backend API on :3501. Protected routes use Clerk JWT verifica
 Routes:
 - `GET /health` — public health check
 - `POST /infer-schema` — protected. Accepts `{ prompt: string }`, returns a `DatasetSchema`. Calls `inferSchema()` from the pipeline.
-- `POST /populate` — protected. Accepts a `DatasetContext` (datasetId, name, description, columns). Triggers the populate workflow which clears existing rows, then uses an AI agent to search the web and insert real data.
+- `POST /populate` — protected. Accepts a `DatasetContext` (datasetId, name, description, columns). Runs the self-healing populate layer, validates the active/candidate recipe output, then atomically replaces rows only after validation passes.
 
 To add a new protected route, register it inside the scoped plugin in `src/index.ts` that has `requireAuth` as a preHandler. Use `req.auth.userId` for the authenticated user — never trust user-supplied IDs in the body.
 
@@ -19,13 +19,25 @@ To add a new protected route, register it inside the scoped plugin in `src/index
 
 The pipeline is a pure function (`inferSchema(prompt) → DatasetSchema`). It is called by both Fastify (for the HTTP API) and Mastra (for workflow orchestration).
 
+## Populate And Self-Healing
+
+`src/pipeline/populate-runtime.ts` — direct callable runtime around the Mastra populate agent. It uses in-memory row capture and returns rows, validation issues, usage, metrics, and debug artifacts without writing Convex rows.
+
+`src/pipeline/populate-self-healing.ts` — recipe runtime/service/store layer. It reruns the active recipe, generates the first recipe, repairs failed active recipes, validates candidate output, promotes healthy candidates, and rejects unsafe candidates.
+
+`src/pipeline/populate-self-healing-runner.ts` — shared route/CLI runner. HTTP populate uses a durable filesystem store and `ConvexPopulateDatasetRowWriter`; benchmark/dry-run paths can inject an in-memory store and skip row commits.
+
+`npm --silent run populate:self-heal -- --context context.json` — operator/cron-friendly dry run. It emits one JSON summary to stdout and does not persist recipe history or commit rows.
+
+`npm --silent run populate:self-heal -- --context context.json --commit` — commits validated rows through the atomic Convex replace mutation. Requires `CONVEX_SELF_HOSTED_ADMIN_KEY`, `OPENROUTER_API_KEY`, and `TINYFISH_API_KEY`.
+
 ## Mastra (Workflow Orchestration)
 
 `src/mastra/` — wraps pipelines into Mastra workflows. Runs as a separate Docker service on :4111 with `mastra dev`, which provides a Studio UI for inspecting and testing workflows.
 
 - `src/mastra/index.ts` — registers agents and workflows with the `Mastra` instance
 - `src/mastra/workflows/infer-schema.ts` — `inferSchemaWorkflow`, a single-step workflow wrapping `inferSchema()`
-- `src/mastra/workflows/populate.ts` — `populateWorkflow`, 3-step workflow: clear rows → build prompt → run populate agent
+- `src/mastra/workflows/populate.ts` — legacy Mastra workflow: clear rows → build prompt → run populate agent. HTTP `/populate` no longer uses this destructive pre-clear path.
 - `src/mastra/agents/populate.ts` — `populateAgent`, an AI agent (Claude Sonnet 4.6 via OpenRouter) with 7 tools for database CRUD and web access
 - `src/mastra/tools/dataset-tools.ts` — 5 Convex-backed tools: `insert_row`, `list_rows`, `get_row`, `update_row`, `delete_row`
 - `src/mastra/tools/web-tools.ts` — 2 TinyFish API tools: `search_web`, `fetch_page`
