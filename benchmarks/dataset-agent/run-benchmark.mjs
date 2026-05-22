@@ -1582,6 +1582,12 @@ function failureReason({
     if (answerKeyScore.failureCategory === "source_evidence") {
       return `Source/domain evidence failed; factual accuracy ${answerKeyScore.factualAccuracyScore}, domain accuracy ${answerKeyScore.domainAccuracyRatio}.`;
     }
+    if (answerKeyScore.entityCoverageRatio < 1) {
+      return `Entity coverage ${answerKeyScore.entityCoverageRatio} below required coverage; missing entities: ${answerKeyScore.missingExpectedEntities.join(", ") || "none"}.`;
+    }
+    if (answerKeyScore.claimSupportRatio < 1) {
+      return `Claim support ${answerKeyScore.claimSupportRatio} below required support; missing required claim text for: ${answerKeyScore.missingExpectedEntities.join(", ") || "none"}.`;
+    }
     return `Factual accuracy ${answerKeyScore.factualAccuracyScore} below ${answerKeyScore.minimumScore}; missing entities: ${answerKeyScore.missingExpectedEntities.join(", ") || "none"}.`;
   }
   return "Benchmark failed.";
