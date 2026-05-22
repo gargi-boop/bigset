@@ -28,6 +28,10 @@ the collection pipeline is migrated into BigSet.
   without injecting answer-key URLs at runtime.
 - PR #46 surfaces no-Agent browser/form/detail follow-up as a safe capability
   diagnostic instead of hiding it as generic bad data or infra failure.
+- PR #48 improves source coherence so row source URLs, evidence quotes, and
+  cell values stay aligned with the same entity/domain.
+- PR #49 improves evidence support, URL-cell evidence, duplicate/entity merge
+  behavior, and stale focused benchmark answer keys.
 - `feat/data-collection-agent-v14` is no longer the branch to build on directly.
   It was the source of the collection pipeline port. New work should branch on
   top of the current draft stack, not edit Meteor's branch or the dirty main
@@ -86,12 +90,16 @@ The current layer now can:
   metadata through the collection runner
 - emit a capability diagnostic when no-Agent mode sees pages that need browser,
   form, or detail-page follow-up
+- pass the focused 4-prompt Agent-enabled collection self-healing benchmark
+  with factual accuracy, entity coverage, domain accuracy, evidence support,
+  and claim support all at `1.0`
 
 The current layer does not yet:
 
 - generate Playwright scripts as a durable production recipe
 - run a green live Convex canary in this local environment
-- prove Agent-enabled collection quality on a full real benchmark
+- prove Agent-enabled collection quality on a completed full 16-prompt
+  benchmark
 - prove the collection runtime should replace Mastra as the default app runtime
 
 ## Migration Sequence
@@ -153,7 +161,8 @@ The current layer does not yet:
    - 2-prompt real benchmark
    - 1-prompt Agent-enabled capability canary for prompts that need browser or
      detail follow-up
-   - full benchmark only after the 2-prompt run is not obviously broken
+   - focused 4-prompt Agent-enabled benchmark before the full pack
+   - full benchmark only after the focused run is not obviously broken
    - live `--dataset-id` dry-run only after Convex/env prerequisites are ready
    - `--commit` only on a throwaway dataset first
 
@@ -243,36 +252,61 @@ That is not a pass, but it is useful: it tells us the next benchmark should
 turn Agent on and measure whether browser/detail follow-up fixes the source
 evidence miss.
 
-Agent-enabled `mcp-docs-pages` evidence from the stack-handoff branch:
+Agent-enabled evidence from PR #49:
 
-- artifact: `benchmark-results/collection-agent-canary-mcp-20260523-001`
-- result: 3 rows, 12 evidence quotes, 10 source URLs, 3 Agent runs
-- cost: about `$0.053552`
-- status: failed, not blocked
-- score: factual accuracy `0.933`, entity coverage `1.0`, claim support `1.0`,
-  domain accuracy `0.667`
-- conclusion: Agent/browser follow-up runs successfully and improves claim
-  support, but source/domain evidence still misses. The next code target is
-  source coherence: keep each row's docs URL/evidence/source URLs aligned with
-  that entity's official docs domain instead of merging discovery/blog/course
-  evidence across vendors.
+- `benchmark-results/collection-evidence-support-mcp-20260523-001`
+  passed `mcp-docs-pages` with 3 rows, no validation issues, and factual
+  accuracy, entity coverage, domain accuracy, evidence support, and claim
+  support all at `1.0`; cost about `$0.022256`.
+- `benchmark-results/collection-evidence-support-earnings-20260523-003`
+  passed `earnings-release-pages` with 3 rows, no validation issues, and the
+  same score dimensions all at `1.0`; cost about `$0.067237`.
+- `benchmark-results/collection-evidence-support-4prompt-20260523-002`
+  passed the focused 4-prompt Agent-enabled pack `4/4` with 12 rows, no
+  blocked prompts, no timeouts, no validation issues, and every score dimension
+  at `1.0`; cost about `$0.193776`.
+- `benchmark-results/collection-evidence-support-full16-20260523-001`
+  completed only the first 8 prompt artifacts before the run was stopped by the
+  agreed 2-hour projected wall-clock gate. No final `summary.json` was written.
+  The completed artifacts had 72 rows, 188 evidence quotes, 108 source URLs,
+  no validation issues, 575,373 tokens, 24 Agent runs, 24 Agent steps, and
+  about `$0.41538435` total estimated spend including TinyFish Agent calls.
+
+This means source/domain coherence is no longer the known blocker for the
+focused prompts. The remaining proof gap is full-pack repeatability and wall
+clock, not basic Agent wiring.
 
 ## Next Engineering Move
 
-Create a fresh branch from `codex/collection-capability-diagnostics` and fix
-source coherence before running the full benchmark:
+Continue from `codex/collection-evidence-support` or the top stacked branch and
+finish full-pack proof:
 
 1. Keep `COLLECTION_AGENT_ENABLE_AGENT=false` as the default.
-2. Add focused tests around record merge/source selection so a row does not gain
-   evidence for a populated field from another record unless the incoming row
-   value supports the existing value.
-3. Tighten docs/official-source selection so docs prompts prefer docs/developers
-   pages over blogs, news, courses, directories, or third-party discovery pages.
-4. Re-run the Agent-enabled `mcp-docs-pages` canary.
-5. If domain accuracy reaches `1.0`, run the 4-prompt focused benchmark from
-   PR #45.
-6. Run the full prompt pack only after the focused benchmark is not obviously
-   broken.
+2. Keep Agent-enabled runs explicit with `COLLECTION_AGENT_ENABLE_AGENT=true`
+   and a poll timeout.
+3. Re-run the full 16-prompt pack in a longer window, or split it into chunks
+   and aggregate manually.
+4. Stop if any focused-good prompt regresses, if 2 prompts block/timeout, if
+   projected spend exceeds `$1`, or if projected wall clock exceeds the review
+   budget.
+5. If the full run hits the same wall-clock gate, optimize Agent use for prompts
+   5-7 or keep Agent enabled only for prompts that need browser/detail
+   follow-up.
+6. Only after full-pack evidence exists should the team discuss making
+   collection the default runtime.
+
+Full-pack command shape:
+
+```bash
+COLLECTION_AGENT_ENABLE_AGENT=true \
+COLLECTION_AGENT_POLL_TIMEOUT_MS=480000 \
+COLLECTION_AGENT_PIPELINE_MODULE=./backend/BigSet_Data_Collection_Agent/src/orchestrator/pipeline.ts \
+BIGSET_COLLECTION_BENCHMARK_RUNNER_MODULE=./backend/src/pipeline/collection-agent-runner.ts \
+node benchmarks/dataset-agent/run-benchmark.mjs \
+  --timeout-ms 900000 \
+  --out benchmark-results/collection-evidence-support-full16-<run-id> \
+  --system collection-self-heal='node --import ./backend/node_modules/tsx/dist/esm/index.mjs benchmarks/dataset-agent/adapters/collection-self-healing-adapter.mjs'
+```
 
 When testing the real app or CLI path, set:
 

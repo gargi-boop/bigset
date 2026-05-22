@@ -68,15 +68,41 @@ node benchmarks/dataset-agent/run-benchmark.mjs \
   --system collection-self-heal='node --import ./backend/node_modules/tsx/dist/esm/index.mjs benchmarks/dataset-agent/adapters/collection-self-healing-adapter.mjs'
 ```
 
-Latest `mcp-docs-pages` Agent-enabled canary evidence:
+Latest Agent-enabled evidence from PR #49:
 
-- artifact: `benchmark-results/collection-agent-canary-mcp-20260523-001`
-- status: failed, not blocked
-- rows/evidence: 3 rows, 12 evidence quotes, 10 source URLs
-- cost: about `$0.053552`
-- signal: Agent runs complete and claim support reaches `1.0`, but domain
-  accuracy stays `0.667`; next fix is source/domain coherence, not more Agent
-  plumbing.
+- `benchmark-results/collection-evidence-support-mcp-20260523-001`:
+  `mcp-docs-pages` passed with 3 rows, no validation issues, every score
+  dimension at `1.0`, cost about `$0.022256`.
+- `benchmark-results/collection-evidence-support-earnings-20260523-003`:
+  `earnings-release-pages` passed with 3 rows, no validation issues, every
+  score dimension at `1.0`, cost about `$0.067237`.
+- `benchmark-results/collection-evidence-support-4prompt-20260523-002`:
+  focused 4-prompt Agent-enabled pack passed `4/4` with 12 rows, no blocked
+  prompts, no timeouts, no validation issues, every score dimension at `1.0`,
+  cost about `$0.193776`.
+- `benchmark-results/collection-evidence-support-full16-20260523-001`:
+  full-pack attempt completed the first 8 prompt artifacts, then stopped at the
+  agreed 2-hour projected wall-clock gate. No final `summary.json` was written.
+  Partial totals: 72 rows, 188 evidence quotes, 108 source URLs, no validation
+  issues, 575,373 tokens, 24 Agent runs, 24 Agent steps, about `$0.41538435`
+  estimated spend including TinyFish Agent calls.
+
+This evidence proves the focused Agent-enabled self-healing path, not that
+collection should replace Mastra by default. The remaining proof gap is
+full-pack repeatability and wall clock.
+
+Full-pack command shape:
+
+```bash
+COLLECTION_AGENT_ENABLE_AGENT=true \
+COLLECTION_AGENT_POLL_TIMEOUT_MS=480000 \
+COLLECTION_AGENT_PIPELINE_MODULE=./backend/BigSet_Data_Collection_Agent/src/orchestrator/pipeline.ts \
+BIGSET_COLLECTION_BENCHMARK_RUNNER_MODULE=./backend/src/pipeline/collection-agent-runner.ts \
+node benchmarks/dataset-agent/run-benchmark.mjs \
+  --timeout-ms 900000 \
+  --out benchmark-results/collection-evidence-support-full16-<run-id> \
+  --system collection-self-heal='node --import ./backend/node_modules/tsx/dist/esm/index.mjs benchmarks/dataset-agent/adapters/collection-self-healing-adapter.mjs'
+```
 
 App and CLI collection-runtime runs use the same runner shape, but load it from
 `POPULATE_COLLECTION_RUNNER_MODULE` when `POPULATE_AGENT_RUNTIME=collection`.
