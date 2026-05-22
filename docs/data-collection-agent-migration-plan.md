@@ -88,7 +88,9 @@ The current layer does not yet:
 ## Migration Sequence
 
 1. Branch from the top of the self-healing stack.
-   - Base new work on `codex/self-healing-verification`.
+   - For any new collection-runner work, base on
+     `codex/collection-self-healing-benchmark` so PR #39, #40, and #41 stay in
+     the path.
    - Do not edit `main` or `feat/data-collection-agent-v14` directly.
 
 2. Fix the collection branch as a clean build source.
@@ -108,6 +110,9 @@ The current layer does not yet:
    - Input: BigSet `DatasetContext`.
    - Transform `recipe.runtimeInstructions` into the collection pipeline
      prompt/spec alongside the dataset description and columns.
+   - Propagate `requiredColumns`, prompt id, prompt quality, persona, and
+     benchmark stress metadata into the collection pipeline's benchmark/spec
+     generation path when those fields are available.
    - Output: rows, source URLs, evidence quotes, usage, metrics, and debug
      captured sources.
    - No direct Convex writes inside the adapter.
@@ -164,6 +169,8 @@ Before any merge:
 - `npm --prefix backend run build` passes
 - adapter test proves `recipe.runtimeInstructions` reaches the collection
   pipeline prompt/spec
+- adapter or runner tests prove benchmark metadata and `requiredColumns` reach
+  the collection pipeline's spec generation path
 - HTTP-route and CLI tests prove `POPULATE_AGENT_RUNTIME=collection` reaches
   the selected runtime through real app entrypoints
 - benchmark no-key smoke proves blocked with zero spend
@@ -183,8 +190,10 @@ runCollectionPopulatePipeline(CollectionPopulatePipelineInput)
 ```
 
 `CollectionPopulatePipelineInput.recipeInstructions` is the self-healing signal.
-If the collection runner ignores that field, repaired recipes cannot change
-future behavior.
+`requiredColumns` and benchmark metadata are the scoring signal. If the
+collection runner ignores `recipeInstructions`, repaired recipes cannot change
+future behavior. If it ignores `requiredColumns` or benchmark metadata, the
+benchmark can stop measuring the same task.
 
 The real benchmark command after a runner module exists is:
 
@@ -205,7 +214,9 @@ real collection runner behind the existing adapter boundary:
 2. Port only the collection pipeline files needed by that runner from
    `feat/data-collection-agent-v14`.
 3. Convert `CollectionPopulatePipelineInput` into the collection pipeline's
-   prompt/spec. Include both `input.prompt` and `input.recipeInstructions`.
+   prompt/spec. Include `input.prompt`, `input.recipeInstructions`,
+   `input.requiredColumns`, prompt id/quality, persona, and expected-stress
+   benchmark context when available.
 4. Convert the collection pipeline output into `PopulateRuntimeResult`: rows,
    source URLs, evidence quotes, usage, metrics, and debug captured sources.
 5. Keep Convex writes, auth, cron scheduling, and durable recipe storage outside
