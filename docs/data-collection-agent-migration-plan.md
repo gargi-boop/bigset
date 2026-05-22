@@ -271,28 +271,48 @@ Agent-enabled evidence from PR #49:
   The completed artifacts had 72 rows, 188 evidence quotes, 108 source URLs,
   no validation issues, 575,373 tokens, 24 Agent runs, 24 Agent steps, and
   about `$0.41538435` total estimated spend including TinyFish Agent calls.
+- `benchmark-results/collection-evidence-support-mid4-20260523-002`
+  completed the middle 4-prompt Agent-enabled chunk with `0/4` passed, 4
+  failed, 0 blocked, 41 rows, 104 evidence quotes, 40 source URLs, 12 Agent
+  runs, and cost about `$0.208366`.
+- `benchmark-results/collection-evidence-support-remaining8-20260523-001`
+  completed the back 8-prompt Agent-enabled chunk with `4/8` passed, 4 failed,
+  0 blocked, 134 rows, 422 evidence quotes, 131 source URLs, 13 Agent runs,
+  and cost about `$0.265922`.
+
+The scored chunked evidence across all 16 prompts is now `8/16` passed, 8
+failed, 0 blocked, about 1,226,364 tokens, 36 Agent runs, 187 rows, 564
+evidence quotes, 184 source URLs, and about `$0.668064` total estimated spend.
+This is coverage evidence across multiple runs on the same code path. It is not
+single-run full-pack repeatability or wall-clock proof.
 
 This means source/domain coherence is no longer the known blocker for the
-focused prompts. The remaining proof gap is full-pack repeatability and wall
-clock, not basic Agent wiring.
+focused prompts. The current quality gap is source/domain evidence on
+local/menu, bakery product, careers, and vague-company prompts. The remaining
+proof gap is full-pack repeatability and wall clock, not basic Agent wiring.
 
 ## Next Engineering Move
 
 Continue from `codex/collection-evidence-support` or the top stacked branch and
-finish full-pack proof:
+fix the failing chunk patterns before another full-pack attempt:
 
 1. Keep `COLLECTION_AGENT_ENABLE_AGENT=false` as the default.
 2. Keep Agent-enabled runs explicit with `COLLECTION_AGENT_ENABLE_AGENT=true`
    and a poll timeout.
-3. Re-run the full 16-prompt pack in a longer window, or split it into chunks
-   and aggregate manually.
-4. Stop if any focused-good prompt regresses, if 2 prompts block/timeout, if
-   projected spend exceeds `$1`, or if projected wall clock exceeds the review
-   budget.
-5. If the full run hits the same wall-clock gate, optimize Agent use for prompts
-   5-7 or keep Agent enabled only for prompts that need browser/detail
-   follow-up.
-6. Only after full-pack evidence exists should the team discuss making
+3. Fix source/domain evidence for the failed chunks:
+   `menlo-park-coca-cola`, `hcmc-bakery-products`,
+   `ny-ai-startup-careers`, `vietnam-fintech-sites`, `la-coke-menu-lol`,
+   `sf-ml-hiring-rn`, `latest-ai-company-stuff`, and
+   `perplexity-like-companies`.
+4. Tighten Agent gating and cancellation handling for local/product/careers
+   prompts. The chunked runs show repeated Agent cancellations and one internal
+   Agent poll timeout while still returning rows.
+5. Re-run focused failing chunks before another full 16-prompt pack.
+6. Re-run the full 16-prompt pack in one longer window only after chunked
+   quality improves. Stop if any focused-good prompt regresses, if 2 prompts
+   block/timeout, if projected spend exceeds `$1`, or if projected wall clock
+   exceeds the review budget.
+7. Only after single-run full-pack evidence exists should the team discuss making
    collection the default runtime.
 
 Full-pack command shape:

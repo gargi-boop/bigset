@@ -86,10 +86,25 @@ Latest Agent-enabled evidence from PR #49:
   Partial totals: 72 rows, 188 evidence quotes, 108 source URLs, no validation
   issues, 575,373 tokens, 24 Agent runs, 24 Agent steps, about `$0.41538435`
   estimated spend including TinyFish Agent calls.
+- `benchmark-results/collection-evidence-support-mid4-20260523-002`:
+  middle 4-prompt Agent-enabled chunk completed with `0/4` passed, 4 failed,
+  0 blocked, 41 rows, 104 evidence quotes, 40 source URLs, 12 Agent runs,
+  and cost about `$0.208366`.
+- `benchmark-results/collection-evidence-support-remaining8-20260523-001`:
+  back 8-prompt Agent-enabled chunk completed with `4/8` passed, 4 failed,
+  0 blocked, 134 rows, 422 evidence quotes, 131 source URLs, 13 Agent runs,
+  and cost about `$0.265922`.
+
+Across the scored chunked runs for all 16 prompts, the current result is `8/16`
+passed, 8 failed, 0 blocked, about 1,226,364 tokens, 36 Agent runs, 187 rows,
+564 evidence quotes, 184 source URLs, and about `$0.668064` total estimated
+spend. This is coverage evidence across multiple runs on the same code path. It
+is not single-run full-pack repeatability or wall-clock proof.
 
 This evidence proves the focused Agent-enabled self-healing path, not that
 collection should replace Mastra by default. The remaining proof gap is
-full-pack repeatability and wall clock.
+full-pack repeatability and wall clock. The current quality gap is source/domain
+evidence on local/menu, bakery product, careers, and vague-company prompts.
 
 Full-pack command shape:
 
