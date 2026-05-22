@@ -4,33 +4,20 @@ import { test } from "node:test";
 import { runCollectionPopulatePipeline } from "../src/pipeline/collection-agent-runner.js";
 
 test("collection agent runner maps vendored pipeline output into populate runtime result", async () => {
-  const previousModule = process.env.COLLECTION_AGENT_PIPELINE_MODULE;
-  process.env.COLLECTION_AGENT_PIPELINE_MODULE = fakeCollectionPipelineModuleUrl();
+  const previousEnv = snapshotEnv([
+    "AGENT_POLL_TIMEOUT_MS",
+    "COLLECTION_AGENT_ENABLE_AGENT",
+    "COLLECTION_AGENT_PIPELINE_MODULE",
+    "COLLECTION_AGENT_POLL_TIMEOUT_MS",
+  ]);
+  delete process.env.AGENT_POLL_TIMEOUT_MS;
+  delete process.env.COLLECTION_AGENT_ENABLE_AGENT;
+  delete process.env.COLLECTION_AGENT_POLL_TIMEOUT_MS;
+  process.env.COLLECTION_AGENT_PIPELINE_MODULE = fakeCollectionPipelineModuleUrl({
+    expectedAgentEnabled: false,
+  });
   try {
-    const result = await runCollectionPopulatePipeline({
-      datasetId: "dataset-ai-posts",
-      datasetName: "AI posts",
-      description: "Find latest AI blog posts.",
-      columns: [
-        { name: "entity_name", type: "text" },
-        { name: "source_url", type: "url" },
-        { name: "evidence_quote", type: "text" },
-      ],
-      requiredColumns: ["entity_name", "source_url", "evidence_quote"],
-      prompt: [
-        "Dataset: AI posts",
-        "Task: Find latest AI blog posts.",
-        "",
-        "Durable recipe instructions:",
-        "Prefer official source pages.",
-      ].join("\n"),
-      recipeInstructions: "Prefer official source pages.",
-      targetRows: 3,
-      promptId: "latest-ai-blog-posts",
-      promptQuality: "easy",
-      persona: "technical operator",
-      expectedStress: "Latest dated source pages.",
-    });
+    const result = await runCollectionPopulatePipeline(collectionPipelineInput());
 
     assert.equal(result.rows.length, 1);
     assert.equal(result.rows[0]?.cells.entity_name, "OpenAI");
@@ -50,17 +37,72 @@ test("collection agent runner maps vendored pipeline output into populate runtim
     assert.equal(result.metrics.agentRuns, 3);
     assert.equal(result.metrics.agentSteps, 3);
   } finally {
-    if (previousModule === undefined) {
-      delete process.env.COLLECTION_AGENT_PIPELINE_MODULE;
-    } else {
-      process.env.COLLECTION_AGENT_PIPELINE_MODULE = previousModule;
-    }
+    restoreEnv(previousEnv);
   }
 });
 
-function fakeCollectionPipelineModuleUrl(): string {
+test("collection agent runner requires explicit Agent opt-in and caps poll timeout", async () => {
+  const previousEnv = snapshotEnv([
+    "AGENT_POLL_TIMEOUT_MS",
+    "COLLECTION_AGENT_ENABLE_AGENT",
+    "COLLECTION_AGENT_PIPELINE_MODULE",
+    "COLLECTION_AGENT_POLL_TIMEOUT_MS",
+  ]);
+  delete process.env.AGENT_POLL_TIMEOUT_MS;
+  process.env.COLLECTION_AGENT_ENABLE_AGENT = "true";
+  process.env.COLLECTION_AGENT_POLL_TIMEOUT_MS = "12345";
+  process.env.COLLECTION_AGENT_PIPELINE_MODULE = fakeCollectionPipelineModuleUrl({
+    expectedAgentEnabled: true,
+    expectedPollTimeoutMs: "12345",
+  });
+
+  try {
+    const result = await runCollectionPopulatePipeline(collectionPipelineInput());
+    assert.equal(result.rows.length, 1);
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+function collectionPipelineInput() {
+  return {
+    datasetId: "dataset-ai-posts",
+    datasetName: "AI posts",
+    description: "Find latest AI blog posts.",
+    columns: [
+      { name: "entity_name", type: "text" as const },
+      { name: "source_url", type: "url" as const },
+      { name: "evidence_quote", type: "text" as const },
+    ],
+    requiredColumns: ["entity_name", "source_url", "evidence_quote"],
+    prompt: [
+      "Dataset: AI posts",
+      "Task: Find latest AI blog posts.",
+      "",
+      "Durable recipe instructions:",
+      "Prefer official source pages.",
+    ].join("\n"),
+    recipeInstructions: "Prefer official source pages.",
+    targetRows: 3,
+    promptId: "latest-ai-blog-posts",
+    promptQuality: "easy",
+    persona: "technical operator",
+    expectedStress: "Latest dated source pages.",
+  };
+}
+
+function fakeCollectionPipelineModuleUrl(input: {
+  expectedAgentEnabled: boolean;
+  expectedPollTimeoutMs?: string;
+}): string {
   const source = `
     export async function runPipeline(options) {
+      if (options.enableTinyfishAgent !== ${JSON.stringify(input.expectedAgentEnabled)}) {
+        throw new Error("unexpected TinyFish Agent setting");
+      }
+      if (${JSON.stringify(input.expectedPollTimeoutMs ?? null)} !== null && process.env.AGENT_POLL_TIMEOUT_MS !== ${JSON.stringify(input.expectedPollTimeoutMs ?? null)}) {
+        throw new Error("bounded agent poll timeout missing");
+      }
       if (!options.prompt.includes("Durable recipe instructions")) {
         throw new Error("recipe instructions missing from prompt");
       }
@@ -139,4 +181,18 @@ function fakeCollectionPipelineModuleUrl(): string {
     }
   `;
   return `data:text/javascript,${encodeURIComponent(source)}`;
+}
+
+function snapshotEnv(names: string[]): Map<string, string | undefined> {
+  return new Map(names.map((name) => [name, process.env[name]]));
+}
+
+function restoreEnv(snapshot: Map<string, string | undefined>): void {
+  for (const [name, value] of snapshot) {
+    if (value === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = value;
+    }
+  }
 }

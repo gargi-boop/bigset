@@ -238,6 +238,12 @@ POPULATE_COLLECTION_RUNNER_MODULE=./backend/src/pipeline/collection-agent-runner
 COLLECTION_AGENT_PIPELINE_MODULE=./backend/BigSet_Data_Collection_Agent/src/orchestrator/pipeline.ts
 ```
 
+The BigSet runner keeps TinyFish Agent/browser calls disabled unless
+`COLLECTION_AGENT_ENABLE_AGENT=true`. This makes cron and benchmark reruns cheap
+and repeatable first. Agent-enabled runs should also set
+`COLLECTION_AGENT_POLL_TIMEOUT_MS` or `AGENT_POLL_TIMEOUT_MS` so a browser run
+cannot outlive the benchmark/job budget.
+
 Do not switch the default runtime from Mastra to collection until the
 self-healing-wrapped collection benchmark has better evidence than the current
 Mastra lane.

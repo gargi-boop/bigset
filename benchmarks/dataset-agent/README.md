@@ -42,6 +42,10 @@ Real collection benchmark runs require `OPENROUTER_API_KEY`,
 module must export `runCollectionPopulatePipeline(input)` or a default runner
 that accepts `CollectionPopulatePipelineInput` and returns a
 `PopulateRuntimeResult`. The pipeline module must export `runPipeline(options)`.
+The BigSet runner keeps TinyFish Agent/browser calls off by default so the
+benchmark stays cheap and bounded. Set `COLLECTION_AGENT_ENABLE_AGENT=true` to
+opt in; Agent polling is capped by `AGENT_POLL_TIMEOUT_MS`, or by
+`COLLECTION_AGENT_POLL_TIMEOUT_MS` when the generic timeout is unset.
 
 App and CLI collection-runtime runs use the same runner shape, but load it from
 `POPULATE_COLLECTION_RUNNER_MODULE` when `POPULATE_AGENT_RUNTIME=collection`.
