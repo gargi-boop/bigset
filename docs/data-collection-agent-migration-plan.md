@@ -97,6 +97,13 @@ The current layer now can:
 - represent browser actions in the trace contract when a future Agent/canary
   records URL transitions, selectors, target text, or redacted input
   descriptions
+- ingest explicit collection runner `browser_actions` /
+  `agent_browser_actions` report fields into `browser` trace steps without
+  inferring missing clicks, selectors, or form inputs from source URLs
+- map browser action reports mechanically: `target_text` to `targetText`,
+  `value_description` to `valueDescription`, `status` to the trace-step status,
+  `error` to the trace-step error, `phase` to `step.input.phase`, and unknown
+  action names to `browserAction.action = "unknown"`
 - emit a capability diagnostic when no-Agent mode sees pages that need browser,
   form, or detail-page follow-up
 
@@ -111,6 +118,8 @@ The current layer does not yet:
 - compile search/fetch-only traces into Playwright; traces must include
   actionable browser steps before the script compiler is allowed to emit a
   candidate
+- infer browser selectors, clicks, or form values from source outcomes; the
+  collection runner or Agent canary must emit those as explicit action fields
 - run a green live Convex canary in this local environment
 - prove Agent-enabled collection quality on a full real benchmark
 - prove the collection runtime should replace Mastra as the default app runtime
@@ -177,6 +186,8 @@ The current layer does not yet:
    - browser-step trace canary that records URL transitions, selectors/targets,
      and redacted form-input descriptions before any Playwright compiler is
      enabled
+   - confirm the canary emits explicit `agent_browser_actions` or equivalent
+     fields in the collection report; source outcomes alone are not enough
    - full benchmark only after the 2-prompt run is not obviously broken
    - live `--dataset-id` dry-run only after Convex/env prerequisites are ready
    - `--commit` only on a throwaway dataset first
@@ -232,6 +243,12 @@ runCollectionPopulatePipeline(CollectionPopulatePipelineInput)
 collection runner ignores `recipeInstructions`, repaired recipes cannot change
 future behavior. If it ignores `requiredColumns` or benchmark metadata, the
 benchmark can stop measuring the same task.
+
+For the Playwright handoff, Meteor can optionally emit `browser_actions` and
+`agent_browser_actions` in the collection report. BigSet preserves each array's
+order and appends `browser_actions` before `agent_browser_actions` when both are
+present in the same report scope. This is a wrapper ingestion contract only; the
+current vendored pipeline is not claimed to emit those fields yet.
 
 The real benchmark command after a runner module exists is:
 

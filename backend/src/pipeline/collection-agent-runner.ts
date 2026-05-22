@@ -10,6 +10,7 @@ import type {
 import {
   populateProcessTraceFromSteps,
   type PopulateCellValue,
+  type PopulateRuntimeBrowserAction,
   type PopulateRuntimeResult,
   type PopulateRuntimeTraceStep,
 } from "./populate-runtime.js";
@@ -51,6 +52,8 @@ interface CollectionPipelineResult {
       search_queries?: string[];
       fetched_urls?: string[];
       failed_urls?: string[];
+      browser_actions?: CollectionBrowserActionReport[];
+      agent_browser_actions?: CollectionBrowserActionReport[];
     };
     repair?: {
       stats?: CollectionPhaseStats;
@@ -59,6 +62,8 @@ interface CollectionPipelineResult {
     search_queries?: string[];
     fetched_urls?: string[];
     failed_urls?: string[];
+    browser_actions?: CollectionBrowserActionReport[];
+    agent_browser_actions?: CollectionBrowserActionReport[];
     quality?: {
       records?: CollectionRecordQuality[];
     };
@@ -124,7 +129,23 @@ interface CollectionSourceOutcome {
 interface CollectionRepairLoopReport {
   loop_index?: number;
   repair_queries?: string[];
+  browser_actions?: CollectionBrowserActionReport[];
+  agent_browser_actions?: CollectionBrowserActionReport[];
   stats?: CollectionPhaseStats;
+}
+
+interface CollectionBrowserActionReport {
+  action?: string;
+  url?: string;
+  selector?: string;
+  target_text?: string;
+  targetText?: string;
+  value_description?: string;
+  valueDescription?: string;
+  status?: string;
+  error?: string;
+  phase?: string;
+  label?: string;
 }
 
 const AGENT_REQUIRED_TRIAGE_STATUSES = new Set([
@@ -312,7 +333,24 @@ function collectionProcessTrace(input: {
         },
       });
     }
+    steps.push(...browserTraceStepsFromReports({
+      reports: [
+        ...(loop.browser_actions ?? []),
+        ...(loop.agent_browser_actions ?? []),
+      ],
+      defaultPhase: `repair-loop-${loop.loop_index ?? "unknown"}`,
+    }));
   }
+
+  steps.push(...browserTraceStepsFromReports({
+    reports: [
+      ...(report.browser_actions ?? []),
+      ...(report.agent_browser_actions ?? []),
+      ...(report.initial?.browser_actions ?? []),
+      ...(report.initial?.agent_browser_actions ?? []),
+    ],
+    defaultPhase: "initial",
+  }));
 
   for (const outcome of report.sources?.outcomes ?? []) {
     if (!outcome.url) {
@@ -356,6 +394,92 @@ function collectionDebugNotes(report: CollectionPipelineResult["report"]): strin
     notes.push(`collection repair loops=${report.repair.loops.length}`);
   }
   return notes;
+}
+
+function browserTraceStepsFromReports(input: {
+  reports: CollectionBrowserActionReport[];
+  defaultPhase: string;
+}): PopulateRuntimeTraceStep[] {
+  return input.reports
+    .map((report) => browserTraceStepFromReport({
+      report,
+      defaultPhase: input.defaultPhase,
+    }))
+    .filter((step): step is PopulateRuntimeTraceStep => Boolean(step));
+}
+
+function browserTraceStepFromReport(input: {
+  report: CollectionBrowserActionReport;
+  defaultPhase: string;
+}): PopulateRuntimeTraceStep | undefined {
+  const browserAction = browserActionFromReport(input.report);
+  if (!browserAction) {
+    return undefined;
+  }
+
+  return {
+    kind: "browser",
+    label: input.report.label ?? `collection-browser-${browserAction.action}`,
+    status: browserActionTraceStatus(input.report.status),
+    input: {
+      url: browserAction.url,
+      selector: browserAction.selector,
+      targetText: browserAction.targetText,
+      phase: input.report.phase ?? input.defaultPhase,
+    },
+    error: input.report.error,
+    browserAction,
+  };
+}
+
+function browserActionFromReport(
+  report: CollectionBrowserActionReport
+): PopulateRuntimeBrowserAction | undefined {
+  const action = browserActionKind(report.action);
+  const targetText = report.targetText ?? report.target_text;
+  const valueDescription =
+    report.valueDescription ?? report.value_description;
+  if (!report.url && !report.selector && !targetText) {
+    return undefined;
+  }
+  return {
+    action,
+    url: report.url,
+    selector: report.selector,
+    targetText,
+    valueDescription,
+  };
+}
+
+function browserActionKind(
+  value: string | undefined
+): PopulateRuntimeBrowserAction["action"] {
+  const normalized = value?.trim().toLowerCase();
+  if (
+    normalized === "navigate" ||
+    normalized === "click" ||
+    normalized === "type" ||
+    normalized === "select" ||
+    normalized === "wait" ||
+    normalized === "extract" ||
+    normalized === "screenshot"
+  ) {
+    return normalized;
+  }
+  return "unknown";
+}
+
+function browserActionTraceStatus(
+  value: string | undefined
+): PopulateRuntimeTraceStep["status"] {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "failed" || normalized === "error") {
+    return "failed";
+  }
+  if (normalized === "skipped") {
+    return "skipped";
+  }
+  return "succeeded";
 }
 
 function sourceOutcomeTraceKind(outcome: CollectionSourceOutcome): PopulateRuntimeTraceStep["kind"] {

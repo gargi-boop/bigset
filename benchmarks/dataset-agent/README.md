@@ -88,6 +88,26 @@ and fetch URLs alone are not enough. The readiness gate expects real browser
 actions such as URL transitions, selectors, target text, or redacted input
 descriptions before any `playwright-candidate-script` can be emitted.
 
+Collection runners can feed those actions through explicit report fields such
+as `browser_actions` or `agent_browser_actions`. BigSet maps only those explicit
+actions into `browser` trace steps; it does not infer selectors or clicks from
+URLs, source outcomes, or prose diagnostics.
+
+Mapping is mechanical:
+
+- `target_text` / `targetText` -> `browserAction.targetText`
+- `value_description` / `valueDescription` -> `browserAction.valueDescription`
+- `status` -> `step.status`
+- `error` -> `step.error`
+- `phase` -> `step.input.phase`
+- unknown action strings -> `browserAction.action = "unknown"`
+
+When both action arrays are present in the same report scope, BigSet preserves
+array order by appending `browser_actions` first and `agent_browser_actions`
+second. This is an ingestion contract for a future Meteor/Mengzhe producer or
+Agent canary; it does not mean the current vendored pipeline already emits
+browser actions.
+
 ## Verify Self-Healing Stack
 
 Use this before asking someone else to migrate a new collection agent into the

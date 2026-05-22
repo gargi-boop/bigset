@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { runCollectionPopulatePipeline } from "../src/pipeline/collection-agent-runner.js";
+import { playwrightCandidateReadinessForRun } from "../src/pipeline/populate-playwright-readiness.js";
 
 test("collection agent runner maps vendored pipeline output into populate runtime result", async () => {
   const previousEnv = snapshotEnv([
@@ -52,6 +53,77 @@ test("collection agent runner maps vendored pipeline output into populate runtim
         artifact.status === "succeeded"
       ),
       true
+    );
+    assert.equal(
+      result.debug?.processTrace.steps.some((step) => step.kind === "browser"),
+      false
+    );
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("collection agent runner maps explicit browser action reports into process trace", async () => {
+  const previousEnv = snapshotEnv([
+    "AGENT_POLL_TIMEOUT_MS",
+    "COLLECTION_AGENT_ENABLE_AGENT",
+    "COLLECTION_AGENT_PIPELINE_MODULE",
+    "COLLECTION_AGENT_POLL_TIMEOUT_MS",
+  ]);
+  delete process.env.AGENT_POLL_TIMEOUT_MS;
+  process.env.COLLECTION_AGENT_ENABLE_AGENT = "true";
+  delete process.env.COLLECTION_AGENT_POLL_TIMEOUT_MS;
+  process.env.COLLECTION_AGENT_PIPELINE_MODULE = fakeCollectionPipelineModuleUrl({
+    expectedCalls: [{ agentEnabled: true, pollTimeoutMs: 480_000 }],
+    browserActions: [
+      {
+        action: "hover",
+        url: "https://openai.com/news",
+        status: "succeeded",
+        phase: "initial-browser",
+        label: "browser-open-news",
+      },
+    ],
+    agentBrowserActions: [
+      {
+        action: "click",
+        url: "https://openai.com/news",
+        selector: "a[href*='/news/']",
+        target_text: "Release notes",
+        value_description: "not captured",
+        status: "succeeded",
+      },
+    ],
+  });
+  try {
+    const result = await runCollectionPopulatePipeline(collectionPipelineInput());
+    const browserSteps = result.debug?.processTrace.steps.filter(
+      (step) => step.kind === "browser"
+    ) ?? [];
+
+    assert.equal(browserSteps.length, 2);
+    assert.equal(browserSteps[0]?.browserAction?.action, "unknown");
+    assert.equal(browserSteps[0]?.label, "browser-open-news");
+    assert.deepEqual(browserSteps[0]?.input, {
+      url: "https://openai.com/news",
+      selector: undefined,
+      targetText: undefined,
+      phase: "initial-browser",
+    });
+    assert.equal(browserSteps[0]?.error, undefined);
+    assert.equal(browserSteps[1]?.browserAction?.action, "click");
+    assert.equal(browserSteps[1]?.browserAction?.selector, "a[href*='/news/']");
+    assert.equal(browserSteps[1]?.browserAction?.targetText, "Release notes");
+    assert.equal(browserSteps[1]?.browserAction?.valueDescription, "not captured");
+    assert.equal(browserSteps[1]?.status, "succeeded");
+    assert.deepEqual(
+      playwrightCandidateReadinessForRun({ result }),
+      {
+        status: "ready",
+        reasons: [],
+        browserStepCount: 2,
+        sourceUrlCount: 2,
+      }
     );
   } finally {
     restoreEnv(previousEnv);
@@ -182,6 +254,8 @@ function fakeCollectionPipelineModuleUrl(input: {
     pollTimeoutMs?: number;
   }>;
   sources?: unknown;
+  browserActions?: unknown;
+  agentBrowserActions?: unknown;
 }): string {
   const source = `
     const moduleLoadPollTimeoutMs = process.env.AGENT_POLL_TIMEOUT_MS ?? null;
@@ -275,6 +349,8 @@ function fakeCollectionPipelineModuleUrl(input: {
             "OpenAI latest AI blog posts",
             "OpenAI release notes",
           ],
+          browser_actions: ${JSON.stringify(input.browserActions ?? [])},
+          agent_browser_actions: ${JSON.stringify(input.agentBrowserActions ?? [])},
           fetched_urls: [
             "https://openai.com/news",
             "https://openai.com/research",
