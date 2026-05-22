@@ -1,5 +1,9 @@
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
 import {
   CollectionPopulateRecipeRuntime,
+  type CollectionPopulateBenchmarkMetadata,
   type CollectionPopulatePipelineRunner,
 } from "./populate-collection-runtime.js";
 import {
@@ -42,13 +46,48 @@ export async function createPopulateRecipeRuntime(
   if (runtimeName === "mastra") {
     return new MastraPopulateRecipeRuntime({ maxRows: input.maxRows });
   }
-  if (!input.collectionRunner) {
+  const collectionRunner =
+    input.collectionRunner ?? await loadCollectionRunnerFromEnv(input.env);
+  if (!collectionRunner) {
     throw new Error(
-      "POPULATE_AGENT_RUNTIME=collection requires a collection pipeline runner."
+      "POPULATE_AGENT_RUNTIME=collection requires a collection pipeline runner or POPULATE_COLLECTION_RUNNER_MODULE."
     );
   }
   return new CollectionPopulateRecipeRuntime({
-    runPipeline: input.collectionRunner,
+    runPipeline: collectionRunner,
     targetRows: input.maxRows,
+    benchmarkMetadata: collectionBenchmarkMetadataFromEnv(input.env),
   });
+}
+
+async function loadCollectionRunnerFromEnv(
+  env: NodeJS.ProcessEnv
+): Promise<CollectionPopulatePipelineRunner | undefined> {
+  const moduleSpecifier = env.POPULATE_COLLECTION_RUNNER_MODULE;
+  if (!moduleSpecifier) {
+    return undefined;
+  }
+
+  const moduleUrl = moduleSpecifier.startsWith(".") || moduleSpecifier.startsWith("/")
+    ? pathToFileURL(resolve(moduleSpecifier)).href
+    : moduleSpecifier;
+  const loadedModule = await import(moduleUrl);
+  const runner = loadedModule.runCollectionPopulatePipeline ?? loadedModule.default;
+  if (typeof runner !== "function") {
+    throw new Error(
+      `${moduleSpecifier} must export runCollectionPopulatePipeline(input) or a default runner.`
+    );
+  }
+  return runner as CollectionPopulatePipelineRunner;
+}
+
+function collectionBenchmarkMetadataFromEnv(
+  env: NodeJS.ProcessEnv
+): CollectionPopulateBenchmarkMetadata {
+  return {
+    promptId: env.BIGSET_BENCHMARK_PROMPT_ID,
+    promptQuality: env.BIGSET_BENCHMARK_PROMPT_QUALITY,
+    persona: env.BIGSET_BENCHMARK_PERSONA,
+    expectedStress: env.BIGSET_BENCHMARK_EXPECTED_STRESS,
+  };
 }

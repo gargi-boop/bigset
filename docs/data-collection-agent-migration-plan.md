@@ -14,8 +14,8 @@ the collection pipeline is migrated into BigSet.
   run a collection pipeline through the same `PopulateRecipeRuntime` interface
   as Mastra.
 - PR #40 adds `POPULATE_AGENT_RUNTIME=collection` selection through the real
-  HTTP and CLI entrypoints, but intentionally requires an injected collection
-  runner instead of pretending the vendored runner has already been ported.
+  HTTP and CLI entrypoints. PR #42 extends that socket so app/CLI runs can load
+  a runner module from `POPULATE_COLLECTION_RUNNER_MODULE`.
 - PR #41 adds a `collection-self-heal` benchmark lane that wraps the collection
   runtime inside `SelfHealingPopulateRecipeService`. This is the benchmark
   socket Meteor can use once the real collection runner is available.
@@ -228,6 +228,13 @@ real collection runner behind the existing adapter boundary:
    build`, `make verify-self-healing`, 2-prompt `collection-self-heal`
    benchmark, then full benchmark only if the 2-prompt run is not obviously
    broken.
+
+When testing the real app or CLI path, set:
+
+```bash
+POPULATE_AGENT_RUNTIME=collection
+POPULATE_COLLECTION_RUNNER_MODULE=./backend/src/pipeline/collection-agent-runner.ts
+```
 
 Do not switch the default runtime from Mastra to collection until the
 self-healing-wrapped collection benchmark has better evidence than the current

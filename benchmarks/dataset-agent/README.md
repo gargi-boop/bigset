@@ -40,6 +40,9 @@ the shell. The runner module must export `runCollectionPopulatePipeline(input)`
 or a default runner that accepts `CollectionPopulatePipelineInput` and returns a
 `PopulateRuntimeResult`.
 
+App and CLI collection-runtime runs use the same runner shape, but load it from
+`POPULATE_COLLECTION_RUNNER_MODULE` when `POPULATE_AGENT_RUNTIME=collection`.
+
 ## Verify Self-Healing Stack
 
 Use this before asking someone else to migrate a new collection agent into the
