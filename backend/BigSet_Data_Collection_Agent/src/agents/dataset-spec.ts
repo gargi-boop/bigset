@@ -10,6 +10,7 @@ import {
   mergeSpecWithBenchmarkRequiredColumns,
   type BenchmarkSpecContext,
 } from "./benchmark-spec.js";
+import { applyPromptSourcePolicyToSpec } from "./source-policy.js";
 
 const DATASET_SPEC_SYSTEM = `You are the Dataset Spec Agent for a web data collection pipeline.
 
@@ -182,6 +183,8 @@ export async function generateDatasetSpec(
       target_row_count: targetRows,
     }),
   );
+
+  normalized = applyPromptSourcePolicyToSpec(normalized, prompt);
 
   if (hasBenchmarkRequiredColumns(benchmark)) {
     normalized = mergeSpecWithBenchmarkRequiredColumns(normalized, benchmark);

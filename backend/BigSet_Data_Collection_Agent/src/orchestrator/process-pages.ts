@@ -2,6 +2,7 @@ import { generateAgentGoal } from "../agents/agent-goal.js";
 import { extractFromAgentResult } from "../agents/extract-from-agent.js";
 import { extractFromPage } from "../agents/extract.js";
 import { triagePage } from "../agents/source-triage.js";
+import { derivePromptSourcePolicy } from "../agents/source-policy.js";
 import { config } from "../config.js";
 import { runTinyfishAgentsBatch } from "../integrations/tinyfish-agent.js";
 import type { WorkflowMemory } from "../memory/index.js";
@@ -60,6 +61,34 @@ function bumpStatus(summary: TriageSummary, status: SourceStatus): void {
   summary.by_status[status] = (summary.by_status[status] ?? 0) + 1;
 }
 
+function shouldFallbackExtractOfficialNavigation(
+  url: string,
+  status: SourceStatus,
+): boolean {
+  if (
+    status !== "requires_navigation" &&
+    status !== "requires_detail_page_followup"
+  ) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(url);
+    const path = `${parsed.pathname}${parsed.search}`.toLowerCase();
+    if (
+      path === "/" ||
+      /(?:login|signin|signup|default\.aspx|home)(?:\/|$|\?)/.test(path)
+    ) {
+      return false;
+    }
+    return /(?:pricing|billing|docs|documentation|mcp|model-context-protocol|earnings|press-release|quarterly|results|news|blog)/.test(
+      path,
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function processFetchedPages(options: {
   label: string;
   userPrompt: string;
@@ -81,6 +110,7 @@ export async function processFetchedPages(options: {
   const records: ExtractedRecord[] = [];
   const agentRuns: AgentRunRecord[] = [];
   const knownKeys = new Set(options.knownEntityKeys ?? []);
+  const sourcePolicy = derivePromptSourcePolicy(options.userPrompt);
 
   const successfulPages = options.pages.filter(
     (page) => !page.error && page.text.trim().length > 0,
@@ -200,6 +230,21 @@ export async function processFetchedPages(options: {
       summary.agent_candidates += 1;
       if (agentEnabled) {
         agentQueue.push({ page, triage });
+      } else if (
+        sourcePolicy.requiresOfficialSource &&
+        shouldFallbackExtractOfficialNavigation(triage.final_url, triage.status)
+      ) {
+        options.log(
+          options.label,
+          `Agent disabled — intent-path fallback extract for ${triage.final_url} [${triage.status}]`,
+        );
+        extractPages.push({ page, triage });
+      } else if (sourcePolicy.requiresOfficialSource) {
+        summary.skipped += 1;
+        options.log(
+          options.label,
+          `Agent disabled — skip navigation-only official source ${triage.final_url} [${triage.status}]`,
+        );
       } else {
         options.log(
           options.label,

@@ -11,6 +11,10 @@ import {
   type FetchedPage,
   type SourceTriageResult,
 } from "../models/schemas.js";
+import {
+  applyPromptSourcePolicyToTriageResult,
+  derivePromptSourcePolicy,
+} from "./source-policy.js";
 
 const TRIAGE_SYSTEM = `You are the Source Triage Agent for a web data collection pipeline.
 
@@ -90,11 +94,15 @@ export async function triagePage(options: {
     ],
   });
 
-  return {
+  const normalizedResult = {
     ...result,
     url: options.page.url,
     final_url: pageUrl,
     title: options.page.title || result.title,
     status: sourceStatusSchema.parse(result.status),
   };
+  return applyPromptSourcePolicyToTriageResult(
+    normalizedResult,
+    derivePromptSourcePolicy(options.userPrompt),
+  );
 }

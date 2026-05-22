@@ -7,7 +7,7 @@ const SKIP_HOST =
   /(?:facebook|twitter|x\.com|instagram|youtube|tiktok|pinterest|reddit\.com\/r\/|linkedin\.com\/in\/|accounts\.google|login|signin|signup|register|cookie|privacy|terms|cdn\.|static\.|fonts\.)/i;
 const SKIP_EXT = /\.(?:pdf|zip|png|jpe?g|gif|svg|webp|css|js|woff2?|xml|mp4|mp3)(?:\?|$)/i;
 const POSITIVE_PATH =
-  /\/(?:company|companies|startup|startups|portfolio|team|about|careers|jobs|directory|list|batch|founder|org|organization|profile|detail|view)(?:\/|$|\?)/i;
+  /\/(?:blog|news|docs|documentation|pricing|billing|investor|investors|earnings|financial|reports|press|release|releases|mcp|model-context-protocol|agents|company|companies|startup|startups|portfolio|team|about|careers|jobs|directory|list|batch|founder|org|organization|profile|detail|view)(?:\/|$|\?)/i;
 const NEGATIVE_PATH =
   /\/(?:tag|tags|category|categories|author|feed|rss|search|wp-admin|wp-content)(?:\/|$|\?)/i;
 

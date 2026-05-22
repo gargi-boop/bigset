@@ -5,6 +5,11 @@ import { domainMemoryBoost, type WorkflowMemory } from "../memory/index.js";
 import type { SearchPlan } from "../memory/search-pagination.js";
 import { getPrimaryKeyValue } from "../merge/records.js";
 import { createFetchQueue, createSearchQueue } from "../queue/pools.js";
+import {
+  derivePromptSourcePolicy,
+  sourceCandidatePolicyBoost,
+  type PromptSourcePolicy,
+} from "../agents/source-policy.js";
 import type {
   AgentRunRecord,
   DatasetSpec,
@@ -39,6 +44,7 @@ function rankCandidates(
   excludeUrls: Set<string>,
   limit: number,
   memory?: WorkflowMemory,
+  sourcePolicy?: PromptSourcePolicy,
 ): string[] {
   const byUrl = new Map<
     string,
@@ -55,6 +61,7 @@ function rankCandidates(
     if (candidate.title.length > 10) score += 0.5;
     if (candidate.snippet.length > 40) score += 0.5;
     if (memory) score += domainMemoryBoost(memory, domain);
+    if (sourcePolicy) score += sourceCandidatePolicyBoost(candidate, sourcePolicy);
     byUrl.set(url, { url, score, domain });
   }
 
@@ -127,15 +134,18 @@ export async function runAcquisitionPhase(options: {
     },
   );
   const candidates: SourceCandidate[] = searchBatches.flat();
+  const sourcePolicy = derivePromptSourcePolicy(options.userPrompt);
 
   const urlsToFetch = rankCandidates(
     candidates,
     options.excludeUrls,
     options.maxUrlsToFetch,
     options.memory,
+    sourcePolicy,
   );
 
-  const fetchWithLinks = options.enableLinkFollow ?? false;
+  const fetchWithLinks =
+    options.enableLinkFollow ?? sourcePolicy.requiresOfficialSource;
   const urlChunks = chunkUrls(urlsToFetch, config.fetchBatchSize);
 
   options.log(
