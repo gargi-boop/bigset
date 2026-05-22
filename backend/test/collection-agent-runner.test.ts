@@ -46,7 +46,9 @@ test("collection agent runner maps vendored pipeline output into populate runtim
     });
     assert.equal(result.metrics.searchCalls, 2);
     assert.equal(result.metrics.fetchCalls, 3);
-    assert.equal(result.metrics.browserCalls, 1);
+    assert.equal(result.metrics.browserCalls, 3);
+    assert.equal(result.metrics.agentRuns, 3);
+    assert.equal(result.metrics.agentSteps, 3);
   } finally {
     if (previousModule === undefined) {
       delete process.env.COLLECTION_AGENT_PIPELINE_MODULE;
@@ -100,9 +102,9 @@ function fakeCollectionPipelineModuleUrl(): string {
           repair: {
             stats: {
               triage: {
-                agent_dispatched: 0,
-                agent_succeeded: 0,
-                agent_failed: 0,
+                agent_dispatched: 2,
+                agent_succeeded: 1,
+                agent_failed: 1,
               },
             },
           },

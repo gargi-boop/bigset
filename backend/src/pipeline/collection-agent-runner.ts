@@ -116,12 +116,12 @@ export const runCollectionPopulatePipeline: CollectionPopulatePipelineRunner =
   };
 
 async function loadCollectionPipelineModule(): Promise<CollectionPipelineModule> {
-  const moduleSpecifier =
-    process.env.COLLECTION_AGENT_PIPELINE_MODULE ??
-    new URL(
-      "../../BigSet_Data_Collection_Agent/src/orchestrator/pipeline.ts",
-      import.meta.url
-    ).href;
+  const moduleSpecifier = process.env.COLLECTION_AGENT_PIPELINE_MODULE;
+  if (!moduleSpecifier) {
+    throw new Error(
+      "COLLECTION_AGENT_PIPELINE_MODULE must point to the collection pipeline module exporting runPipeline(options)."
+    );
+  }
   const moduleUrl = moduleSpecifier.startsWith(".") || moduleSpecifier.startsWith("/")
     ? pathToFileURL(resolve(moduleSpecifier)).href
     : moduleSpecifier;
@@ -263,10 +263,8 @@ function usageFromPipeline(pipeline: CollectionPipelineResult) {
 function metricsFromReport(report: CollectionPipelineResult["report"]) {
   const stats = report.stats ?? {};
   const initialTriage = report.initial?.triage ?? {};
-  const statsTriage = stats.triage ?? {};
   const repairTriage = report.repair?.stats?.triage ?? {};
   const agentDispatched =
-    numberValue(statsTriage.agent_dispatched) ||
     numberValue(initialTriage.agent_dispatched) +
       numberValue(repairTriage.agent_dispatched);
 
@@ -274,10 +272,10 @@ function metricsFromReport(report: CollectionPipelineResult["report"]) {
     searchCalls: numberValue(stats.search_queries_executed),
     fetchCalls: numberValue(stats.pages_fetched),
     browserCalls: agentDispatched,
-    agentRuns: agentDispatched > 0 ? agentDispatched : 1,
+    agentRuns: agentDispatched,
     agentSteps:
-      numberValue(statsTriage.agent_succeeded) +
-      numberValue(statsTriage.agent_failed) +
+      numberValue(initialTriage.agent_succeeded) +
+      numberValue(initialTriage.agent_failed) +
       numberValue(repairTriage.agent_succeeded) +
       numberValue(repairTriage.agent_failed),
   };

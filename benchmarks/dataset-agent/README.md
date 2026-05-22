@@ -29,16 +29,19 @@ That means collection results are scored after the same recipe generation,
 repair, validation, and promotion path as the app runtime.
 
 ```bash
+COLLECTION_AGENT_PIPELINE_MODULE=./backend/BigSet_Data_Collection_Agent/src/orchestrator/pipeline.ts \
+BIGSET_COLLECTION_BENCHMARK_RUNNER_MODULE=./backend/src/pipeline/collection-agent-runner.ts \
 node benchmarks/dataset-agent/run-benchmark.mjs \
   --prompt-ids latest-ai-blog-posts,saas-pricing-pages \
   --system collection-self-heal='node --import ./backend/node_modules/tsx/dist/esm/index.mjs benchmarks/dataset-agent/adapters/collection-self-healing-adapter.mjs'
 ```
 
 Real collection benchmark runs require `OPENROUTER_API_KEY`,
-`TINYFISH_API_KEY`, and `BIGSET_COLLECTION_BENCHMARK_RUNNER_MODULE` loaded in
-the shell. The runner module must export `runCollectionPopulatePipeline(input)`
-or a default runner that accepts `CollectionPopulatePipelineInput` and returns a
-`PopulateRuntimeResult`.
+`TINYFISH_API_KEY`, `BIGSET_COLLECTION_BENCHMARK_RUNNER_MODULE`, and
+`COLLECTION_AGENT_PIPELINE_MODULE` loaded in the shell. The benchmark runner
+module must export `runCollectionPopulatePipeline(input)` or a default runner
+that accepts `CollectionPopulatePipelineInput` and returns a
+`PopulateRuntimeResult`. The pipeline module must export `runPipeline(options)`.
 
 App and CLI collection-runtime runs use the same runner shape, but load it from
 `POPULATE_COLLECTION_RUNNER_MODULE` when `POPULATE_AGENT_RUNTIME=collection`.

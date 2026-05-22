@@ -605,6 +605,7 @@ async function runSystemPrompt(input) {
     abstentionScore: answerKeyScore.abstentionScore,
     matchedExpectedEntities: answerKeyScore.matchedExpectedEntities,
     missingExpectedEntities: answerKeyScore.missingExpectedEntities,
+    missingClaimSupportEntities: answerKeyScore.missingClaimSupportEntities,
     latencyMs: Date.now() - startedAt,
     exitCode: execution.exitCode,
     timedOut: execution.timedOut,
@@ -1093,6 +1094,7 @@ async function rescoreBenchmarkRun({ runDirectory, prompts, config }) {
       abstentionScore: answerKeyScore.abstentionScore,
       matchedExpectedEntities: answerKeyScore.matchedExpectedEntities,
       missingExpectedEntities: answerKeyScore.missingExpectedEntities,
+      missingClaimSupportEntities: answerKeyScore.missingClaimSupportEntities,
       rowCount: validation.rowCount,
       nonEmptyCellCount: validation.nonEmptyCellCount,
       totalExpectedCellCount: validation.totalExpectedCellCount,
@@ -1137,6 +1139,7 @@ function scoreBenchmarkRows(input) {
   const expectedEntities = answerKey.expectedEntities ?? [];
   const matchedExpectedEntities = [];
   const missingExpectedEntities = [];
+  const missingClaimSupportEntities = [];
   let expectedEntityDomainMatches = 0;
   let expectedEntityClaimMatches = 0;
 
@@ -1157,11 +1160,12 @@ function scoreBenchmarkRows(input) {
     if (rowsToCheck.some((row) => rowHasAllowedDomain(row, expectedEntity.allowedSourceDomains))) {
       expectedEntityDomainMatches += 1;
     }
-    if (
-      !expectedEntity.requiredText?.length ||
-      rowsToCheck.some((row) => textContainsAny(rowSearchText(row), expectedEntity.requiredText))
-    ) {
+    const hasRequiredClaimText = !expectedEntity.requiredText?.length ||
+      rowsToCheck.some((row) => textContainsAny(rowSearchText(row), expectedEntity.requiredText));
+    if (hasRequiredClaimText) {
       expectedEntityClaimMatches += 1;
+    } else {
+      missingClaimSupportEntities.push(expectedEntity.label ?? expectedEntity.id);
     }
   }
 
@@ -1241,6 +1245,7 @@ function scoreBenchmarkRows(input) {
     abstentionScore,
     matchedExpectedEntities,
     missingExpectedEntities,
+    missingClaimSupportEntities,
     minimumScore,
   };
 }
@@ -1586,7 +1591,7 @@ function failureReason({
       return `Entity coverage ${answerKeyScore.entityCoverageRatio} below required coverage; missing entities: ${answerKeyScore.missingExpectedEntities.join(", ") || "none"}.`;
     }
     if (answerKeyScore.claimSupportRatio < 1) {
-      return `Claim support ${answerKeyScore.claimSupportRatio} below required support; missing required claim text for: ${answerKeyScore.missingExpectedEntities.join(", ") || "none"}.`;
+      return `Claim support ${answerKeyScore.claimSupportRatio} below required support; missing required claim text for: ${(answerKeyScore.missingClaimSupportEntities ?? []).join(", ") || "none"}.`;
     }
     return `Factual accuracy ${answerKeyScore.factualAccuracyScore} below ${answerKeyScore.minimumScore}; missing entities: ${answerKeyScore.missingExpectedEntities.join(", ") || "none"}.`;
   }

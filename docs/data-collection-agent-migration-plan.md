@@ -198,6 +198,7 @@ benchmark can stop measuring the same task.
 The real benchmark command after a runner module exists is:
 
 ```bash
+COLLECTION_AGENT_PIPELINE_MODULE=./backend/BigSet_Data_Collection_Agent/src/orchestrator/pipeline.ts \
 BIGSET_COLLECTION_BENCHMARK_RUNNER_MODULE=./backend/src/pipeline/collection-agent-runner.ts \
 node benchmarks/dataset-agent/run-benchmark.mjs \
   --prompt-ids latest-ai-blog-posts,saas-pricing-pages \
@@ -234,6 +235,7 @@ When testing the real app or CLI path, set:
 ```bash
 POPULATE_AGENT_RUNTIME=collection
 POPULATE_COLLECTION_RUNNER_MODULE=./backend/src/pipeline/collection-agent-runner.ts
+COLLECTION_AGENT_PIPELINE_MODULE=./backend/BigSet_Data_Collection_Agent/src/orchestrator/pipeline.ts
 ```
 
 Do not switch the default runtime from Mastra to collection until the
