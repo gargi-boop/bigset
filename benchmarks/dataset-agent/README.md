@@ -47,6 +47,37 @@ benchmark stays cheap and bounded. Set `COLLECTION_AGENT_ENABLE_AGENT=true` to
 opt in; Agent polling is capped by `AGENT_POLL_TIMEOUT_MS`, or by
 `COLLECTION_AGENT_POLL_TIMEOUT_MS` when the generic timeout is unset.
 
+When Agent is off and triage finds browser/form/detail-page follow-up, the
+collection runner emits a non-fatal capability diagnostic. Healthy rows can
+still pass self-healing validation with this diagnostic as a warning. Benchmark
+failures show the same diagnostic as the failure message so the result says
+"turn Agent on for this prompt" instead of pretending the run hit auth,
+credits, or generic zero-row failure.
+
+Use this canary when checking whether Agent/browser follow-up fixes the current
+source-evidence misses:
+
+```bash
+COLLECTION_AGENT_ENABLE_AGENT=true \
+COLLECTION_AGENT_POLL_TIMEOUT_MS=480000 \
+COLLECTION_AGENT_PIPELINE_MODULE=./backend/BigSet_Data_Collection_Agent/src/orchestrator/pipeline.ts \
+BIGSET_COLLECTION_BENCHMARK_RUNNER_MODULE=./backend/src/pipeline/collection-agent-runner.ts \
+node benchmarks/dataset-agent/run-benchmark.mjs \
+  --prompt-ids mcp-docs-pages \
+  --timeout-ms 900000 \
+  --system collection-self-heal='node --import ./backend/node_modules/tsx/dist/esm/index.mjs benchmarks/dataset-agent/adapters/collection-self-healing-adapter.mjs'
+```
+
+Latest `mcp-docs-pages` Agent-enabled canary evidence:
+
+- artifact: `benchmark-results/collection-agent-canary-mcp-20260523-001`
+- status: failed, not blocked
+- rows/evidence: 3 rows, 12 evidence quotes, 10 source URLs
+- cost: about `$0.053552`
+- signal: Agent runs complete and claim support reaches `1.0`, but domain
+  accuracy stays `0.667`; next fix is source/domain coherence, not more Agent
+  plumbing.
+
 App and CLI collection-runtime runs use the same runner shape, but load it from
 `POPULATE_COLLECTION_RUNNER_MODULE` when `POPULATE_AGENT_RUNTIME=collection`.
 

@@ -19,15 +19,19 @@ the collection pipeline is migrated into BigSet.
 - PR #41 adds a `collection-self-heal` benchmark lane that wraps the collection
   runtime inside `SelfHealingPopulateRecipeService`. This is the benchmark
   socket Meteor can use once the real collection runner is available.
-- `feat/data-collection-agent-v14` vendors the collection pipeline under
-  `backend/BigSet_Data_Collection_Agent` and includes the memory module.
-- Clean `feat/data-collection-agent-v14` tests pass once ignored backend
-  dependencies are present, but `npm --prefix backend run build` still fails on
-  TypeScript/API integration issues:
-  - TinyFish run status is typed too narrowly.
-  - OpenRouter provider return type leaks private declaration details.
-  - Backend compile depends on generated frontend Convex API output.
-  - AI SDK `maxTokens` option no longer matches the installed SDK type.
+- PR #43 ports the real vendored collection pipeline behind
+  `runCollectionPopulatePipeline(input)`, so the collection benchmark lane now
+  runs the BigSet-wrapped collection runner instead of a fake injected runner.
+- PR #44 keeps TinyFish Agent/browser work opt-in and bounded by a per-run poll
+  timeout. This preserves cheap cron/benchmark reruns as the default path.
+- PR #45 improves collection source targeting for official-source prompts
+  without injecting answer-key URLs at runtime.
+- PR #46 surfaces no-Agent browser/form/detail follow-up as a safe capability
+  diagnostic instead of hiding it as generic bad data or infra failure.
+- `feat/data-collection-agent-v14` is no longer the branch to build on directly.
+  It was the source of the collection pipeline port. New work should branch on
+  top of the current draft stack, not edit Meteor's branch or the dirty main
+  checkout.
 
 ## Target Shape
 
@@ -77,25 +81,30 @@ The current layer now can:
 
 - run an injected collection runner through the same self-healing runtime
   boundary and benchmark harness as Mastra
+- run the real vendored collection pipeline through that same boundary
+- preserve `recipe.runtimeInstructions`, required columns, and benchmark
+  metadata through the collection runner
+- emit a capability diagnostic when no-Agent mode sees pages that need browser,
+  form, or detail-page follow-up
 
 The current layer does not yet:
 
-- run the real vendored collection pipeline as its runtime in this stack
 - generate Playwright scripts as a durable production recipe
 - run a green live Convex canary in this local environment
-- prove quality on a full real benchmark for the collection runtime
+- prove Agent-enabled collection quality on a full real benchmark
+- prove the collection runtime should replace Mastra as the default app runtime
 
 ## Migration Sequence
 
 1. Branch from the top of the self-healing stack.
-   - For any new collection-runner work, base on
-     `codex/collection-self-healing-benchmark` so PR #39, #40, and #41 stay in
-     the path.
-   - Do not edit `main` or `feat/data-collection-agent-v14` directly.
+   - For new collection-runner or benchmark work, base on
+     `codex/collection-capability-diagnostics` unless that PR has been
+     superseded.
+   - Do not edit `main`, the dirty local checkout, or
+     `feat/data-collection-agent-v14` directly.
 
 2. Fix the collection branch as a clean build source.
-   - Port only the needed collection pipeline files into the fresh branch.
-   - Fix the TypeScript/API issues listed above.
+   - Status: done in PR #43 for the BigSet-wrapped collection runner path.
    - Keep vendored code isolated until the adapter is green.
    - Preserve the current backend Convex boundary: do not reintroduce imports
      from `frontend/convex/_generated` into backend compile. Use the existing
@@ -142,6 +151,8 @@ The current layer does not yet:
 6. Run quality gates in increasing cost order.
    - `make verify-self-healing`
    - 2-prompt real benchmark
+   - 1-prompt Agent-enabled capability canary for prompts that need browser or
+     detail follow-up
    - full benchmark only after the 2-prompt run is not obviously broken
    - live `--dataset-id` dry-run only after Convex/env prerequisites are ready
    - `--commit` only on a throwaway dataset first
@@ -177,6 +188,9 @@ Before any merge:
 - benchmark evidence comes from the collection runtime wrapped inside the
   self-healing service, not the direct collection pipeline alone
 - real benchmark artifacts are linked in the PR when runtime quality is claimed
+- capability diagnostics are treated as warnings for healthy rows and as honest
+  benchmark failure messages when no-Agent mode cannot complete browser/form
+  follow-up
 - live dataset commit is tested only on a throwaway dataset
 - backend build does not depend on `frontend/convex/_generated`
 
@@ -205,29 +219,59 @@ node benchmarks/dataset-agent/run-benchmark.mjs \
   --system collection-self-heal='node --import ./backend/node_modules/tsx/dist/esm/index.mjs benchmarks/dataset-agent/adapters/collection-self-healing-adapter.mjs'
 ```
 
+For prompts that likely require browser/detail follow-up, run the same lane with
+Agent explicitly enabled:
+
+```bash
+COLLECTION_AGENT_ENABLE_AGENT=true \
+COLLECTION_AGENT_POLL_TIMEOUT_MS=480000 \
+COLLECTION_AGENT_PIPELINE_MODULE=./backend/BigSet_Data_Collection_Agent/src/orchestrator/pipeline.ts \
+BIGSET_COLLECTION_BENCHMARK_RUNNER_MODULE=./backend/src/pipeline/collection-agent-runner.ts \
+node benchmarks/dataset-agent/run-benchmark.mjs \
+  --prompt-ids mcp-docs-pages \
+  --timeout-ms 900000 \
+  --system collection-self-heal='node --import ./backend/node_modules/tsx/dist/esm/index.mjs benchmarks/dataset-agent/adapters/collection-self-healing-adapter.mjs'
+```
+
+No-Agent `mcp-docs-pages` evidence from PR #46:
+
+- artifact: `benchmark-results/collection-capability-diagnostics-mcp-20260523-001`
+- result: 3 rows, 6 evidence quotes, cost about `$0.007287`
+- status: failed with
+`Capability diagnostic: TinyFish Agent disabled; triage requested browser/form/detail follow-up...`.
+That is not a pass, but it is useful: it tells us the next benchmark should
+turn Agent on and measure whether browser/detail follow-up fixes the source
+evidence miss.
+
+Agent-enabled `mcp-docs-pages` evidence from the stack-handoff branch:
+
+- artifact: `benchmark-results/collection-agent-canary-mcp-20260523-001`
+- result: 3 rows, 12 evidence quotes, 10 source URLs, 3 Agent runs
+- cost: about `$0.053552`
+- status: failed, not blocked
+- score: factual accuracy `0.933`, entity coverage `1.0`, claim support `1.0`,
+  domain accuracy `0.667`
+- conclusion: Agent/browser follow-up runs successfully and improves claim
+  support, but source/domain evidence still misses. The next code target is
+  source coherence: keep each row's docs URL/evidence/source URLs aligned with
+  that entity's official docs domain instead of merging discovery/blog/course
+  evidence across vendors.
+
 ## Next Engineering Move
 
-Create a fresh branch from `codex/collection-self-healing-benchmark` and port the
-real collection runner behind the existing adapter boundary:
+Create a fresh branch from `codex/collection-capability-diagnostics` and fix
+source coherence before running the full benchmark:
 
-1. Add a runner module, likely `backend/src/pipeline/collection-agent-runner.ts`,
-   that exports `runCollectionPopulatePipeline(input)`.
-2. Port only the collection pipeline files needed by that runner from
-   `feat/data-collection-agent-v14`.
-3. Convert `CollectionPopulatePipelineInput` into the collection pipeline's
-   prompt/spec. Include `input.prompt`, `input.recipeInstructions`,
-   `input.requiredColumns`, prompt id/quality, persona, and expected-stress
-   benchmark context when available.
-4. Convert the collection pipeline output into `PopulateRuntimeResult`: rows,
-   source URLs, evidence quotes, usage, metrics, and debug captured sources.
-5. Keep Convex writes, auth, cron scheduling, and durable recipe storage outside
-   the collection runner.
-6. Fix build blockers while porting: TinyFish status typing, OpenRouter provider
-   declaration leak, backend dependency on generated frontend Convex API, and
-   AI SDK `maxTokens`.
-7. Gate in this order: `npm --prefix backend test`, `npm --prefix backend run
-   build`, `make verify-self-healing`, 2-prompt `collection-self-heal`
-   benchmark, then full benchmark only if the 2-prompt run is not obviously
+1. Keep `COLLECTION_AGENT_ENABLE_AGENT=false` as the default.
+2. Add focused tests around record merge/source selection so a row does not gain
+   evidence for a populated field from another record unless the incoming row
+   value supports the existing value.
+3. Tighten docs/official-source selection so docs prompts prefer docs/developers
+   pages over blogs, news, courses, directories, or third-party discovery pages.
+4. Re-run the Agent-enabled `mcp-docs-pages` canary.
+5. If domain accuracy reaches `1.0`, run the 4-prompt focused benchmark from
+   PR #45.
+6. Run the full prompt pack only after the focused benchmark is not obviously
    broken.
 
 When testing the real app or CLI path, set:
