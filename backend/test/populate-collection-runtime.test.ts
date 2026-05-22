@@ -121,6 +121,57 @@ test("collection runtime threads recipe instructions into the collection prompt"
   assert.equal(run.rows[0]?.cells.entity_name, "OpenAI");
 });
 
+test("collection runtime treats capability diagnostics as non-fatal warnings for healthy rows", async () => {
+  const runtime = new CollectionPopulateRecipeRuntime({
+    targetRows: 3,
+    runPipeline: async () => ({
+      rows: [{
+        cells: {
+          entity_name: "OpenAI",
+          latest_post_title: "Release notes from OpenAI",
+          source_url: "https://openai.com/news",
+          evidence_quote: "Release notes from OpenAI",
+        },
+        sourceUrls: ["https://openai.com/news"],
+        evidence: [{
+          columnName: "latest_post_title",
+          sourceUrl: "https://openai.com/news",
+          quote: "Release notes from OpenAI",
+        }],
+        needsReview: false,
+      }],
+      validationIssues: [
+        "Capability diagnostic: TinyFish Agent disabled; triage requested browser/form/detail follow-up for 2 page(s) (requires_navigation=1, requires_form_submission=1). Enable COLLECTION_AGENT_ENABLE_AGENT=true for live navigation.",
+      ],
+      usage: {
+        promptTokens: 11,
+        completionTokens: 7,
+        totalTokens: 18,
+      },
+      metrics: {
+        searchCalls: 1,
+        fetchCalls: 1,
+        browserCalls: 0,
+        agentRuns: 0,
+        agentSteps: 0,
+      },
+    }),
+  });
+
+  const run = await runtime.runRecipe({
+    recipe: collectionRecipe(),
+    context,
+  });
+
+  assert.equal(run.runStatus, "succeeded");
+  assert.equal(run.productionValidation.isValid, true);
+  assert.deepEqual(run.productionValidation.criticalIssues, []);
+  assert.match(
+    run.productionValidation.warnings.join("\n"),
+    /Capability diagnostic: TinyFish Agent disabled/
+  );
+});
+
 test("collection pipeline input builder trims empty recipe instructions", () => {
   const input = collectionPipelineInputFromRecipe({
     recipe: collectionRecipe({ runtimeInstructions: "   " }),

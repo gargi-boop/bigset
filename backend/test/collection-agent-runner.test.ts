@@ -83,6 +83,54 @@ test("collection agent runner requires explicit Agent opt-in and caps poll timeo
   }
 });
 
+test("collection agent runner surfaces Agent-required capability diagnostics from source outcomes", async () => {
+  const previousEnv = snapshotEnv([
+    "AGENT_POLL_TIMEOUT_MS",
+    "COLLECTION_AGENT_ENABLE_AGENT",
+    "COLLECTION_AGENT_PIPELINE_MODULE",
+    "COLLECTION_AGENT_POLL_TIMEOUT_MS",
+  ]);
+  delete process.env.AGENT_POLL_TIMEOUT_MS;
+  delete process.env.COLLECTION_AGENT_ENABLE_AGENT;
+  delete process.env.COLLECTION_AGENT_POLL_TIMEOUT_MS;
+  process.env.COLLECTION_AGENT_PIPELINE_MODULE = fakeCollectionPipelineModuleUrl({
+    expectedCalls: [{ agentEnabled: false }],
+    sources: {
+      outcomes: [
+        {
+          outcome: "agent_deferred",
+          triage_status: "requires_navigation",
+        },
+        {
+          outcome: "no_records",
+          triage_status: "requires_form_submission",
+        },
+        {
+          outcome: "success",
+          triage_status: "requires_detail_page_followup",
+        },
+      ],
+    },
+  });
+
+  try {
+    const result = await runCollectionPopulatePipeline(collectionPipelineInput());
+    const diagnostic = result.validationIssues.join("\n");
+
+    assert.equal(result.rows.length, 1);
+    assert.match(diagnostic, /Capability diagnostic: TinyFish Agent disabled/);
+    assert.match(diagnostic, /2 page\(s\)/);
+    assert.match(diagnostic, /requires_navigation=1/);
+    assert.match(diagnostic, /requires_form_submission=1/);
+    assert.doesNotMatch(
+      diagnostic,
+      /failed|missing|no rows|not found|invented|invalid/i
+    );
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
 function collectionPipelineInput() {
   return {
     datasetId: "dataset-ai-posts",
@@ -116,6 +164,7 @@ function fakeCollectionPipelineModuleUrl(input: {
     agentEnabled: boolean;
     pollTimeoutMs?: number;
   }>;
+  sources?: unknown;
 }): string {
   const source = `
     const moduleLoadPollTimeoutMs = process.env.AGENT_POLL_TIMEOUT_MS ?? null;
@@ -187,6 +236,7 @@ function fakeCollectionPipelineModuleUrl(input: {
           quality: {
             records: [{ record_id: "pk:openai", needs_review: true }],
           },
+          sources: ${JSON.stringify(input.sources ?? { outcomes: [] })},
           llm_usage: {
             prompt_tokens: 1,
             completion_tokens: 1,

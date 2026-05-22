@@ -86,7 +86,11 @@ export interface BuildSourcesOptions {
   fetchedUrls: string[];
   triageResults: SourceTriageResult[];
   agentRuns: AgentRunRecord[];
-  agentDeferred: { url: string; status: string }[];
+  agentDeferred: {
+    url: string;
+    status: string;
+    reason?: "agent_budget" | "agent_disabled";
+  }[];
 }
 
 export function buildSourcesReport(
@@ -133,7 +137,9 @@ export function buildSourcesReport(
       phase: options.phase,
       outcome: "agent_deferred",
       triage_status: deferred.status,
-      error: "Exceeded MAX_AGENT_RUNS_PER_PHASE budget",
+      error: deferred.reason === "agent_disabled"
+        ? "TinyFish Agent disabled for browser/form/detail follow-up"
+        : "Exceeded MAX_AGENT_RUNS_PER_PHASE budget",
     });
   }
 

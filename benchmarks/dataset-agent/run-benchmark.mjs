@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -515,7 +515,9 @@ const answerKeysByPromptId = {
   },
 };
 
-await main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main();
+}
 
 async function runSystemPrompt(input) {
   const startedAt = Date.now();
@@ -643,6 +645,7 @@ async function runSystemPrompt(input) {
         answerKeyScore,
         infraBlockerReason,
         minRequiredCompleteness: input.config.minRequiredCompleteness,
+        validationIssues: normalized.validationIssues,
       }),
   };
 }
@@ -1119,6 +1122,7 @@ async function rescoreBenchmarkRun({ runDirectory, prompts, config }) {
           answerKeyScore,
           infraBlockerReason,
           minRequiredCompleteness: config.minRequiredCompleteness,
+          validationIssues: normalized.validationIssues,
         }),
     });
   }
@@ -1350,7 +1354,7 @@ function failureCategoryForScore(input) {
   return "factual_accuracy";
 }
 
-function findInfrastructureBlockerReason({ execution, parsedPayload, normalized }) {
+export function findInfrastructureBlockerReason({ execution, parsedPayload, normalized }) {
   const combinedText = [
     execution.stderr,
     execution.stdout,
@@ -1360,17 +1364,19 @@ function findInfrastructureBlockerReason({ execution, parsedPayload, normalized 
 
   if (execution.timedOut) return "Command timed out.";
   const blockerPatterns = [
-    "authentication failed",
-    "active subscription",
-    "insufficient credits",
-    "not enough credits",
-    "api key",
-    "tinyfish_api_key",
-    "quota",
-    "rate limit",
-    "benchmark deadline",
+    /authentication failed/,
+    /active subscription/,
+    /insufficient credits/,
+    /not enough credits/,
+    /(?:missing|required|invalid|not configured|not set|unset)[^.]{0,80}api[_ -]?key/,
+    /api[_ -]?key[^.]{0,80}(?:missing|required|invalid|not configured|not set|unset)/,
+    /tinyfish_api_key/,
+    /openrouter_api_key/,
+    /quota exceeded/,
+    /rate[_ -]?limit[_ -]?exceeded/,
+    /benchmark deadline/,
   ];
-  return blockerPatterns.some((pattern) => combinedText.includes(pattern))
+  return blockerPatterns.some((pattern) => pattern.test(combinedText))
     ? "Infrastructure/auth/credits blocker."
     : null;
 }
@@ -1562,18 +1568,21 @@ function identityKey(cells, row) {
   return identityParts[0] ?? null;
 }
 
-function failureReason({
+export function failureReason({
   execution,
   parsedPayload,
   validation,
   answerKeyScore,
   infraBlockerReason,
   minRequiredCompleteness,
+  validationIssues = [],
 }) {
   if (infraBlockerReason) return infraBlockerReason;
   if (execution.timedOut) return "Command timed out.";
   if (execution.exitCode !== 0) return `Command exited ${execution.exitCode}.`;
   if (!parsedPayload) return "No parseable JSON object found in stdout.";
+  const capabilityDiagnostic = capabilityDiagnosticReason(validationIssues);
+  if (capabilityDiagnostic) return capabilityDiagnostic;
   if (answerKeyScore?.failureCategory === "clarification") {
     return `Clarification/abstention score ${answerKeyScore.abstentionScore} below required threshold.`;
   }
@@ -1596,6 +1605,12 @@ function failureReason({
     return `Factual accuracy ${answerKeyScore.factualAccuracyScore} below ${answerKeyScore.minimumScore}; missing entities: ${answerKeyScore.missingExpectedEntities.join(", ") || "none"}.`;
   }
   return "Benchmark failed.";
+}
+
+function capabilityDiagnosticReason(validationIssues) {
+  return validationIssues.find((issue) =>
+    /^capability diagnostic:/i.test(String(issue))
+  ) ?? null;
 }
 
 function arrayValue(value) {

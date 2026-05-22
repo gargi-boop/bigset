@@ -47,6 +47,7 @@ interface CollectionPipelineResult {
     quality?: {
       records?: CollectionRecordQuality[];
     };
+    sources?: CollectionSourcesReport;
     llm_usage?: {
       prompt_tokens?: number;
       completion_tokens?: number;
@@ -92,6 +93,21 @@ interface CollectionRecordQuality {
   needs_review?: boolean;
 }
 
+interface CollectionSourcesReport {
+  outcomes?: CollectionSourceOutcome[];
+}
+
+interface CollectionSourceOutcome {
+  outcome?: string;
+  triage_status?: string;
+}
+
+const AGENT_REQUIRED_TRIAGE_STATUSES = new Set([
+  "requires_navigation",
+  "requires_form_submission",
+  "requires_detail_page_followup",
+]);
+
 const DEFAULT_COLLECTION_AGENT_POLL_TIMEOUT_MS = 480_000;
 
 export const runCollectionPopulatePipeline: CollectionPopulatePipelineRunner =
@@ -119,6 +135,7 @@ export const runCollectionPopulatePipeline: CollectionPopulatePipelineRunner =
     return collectionPipelineResultToPopulateRuntimeResult({
       pipeline: result,
       requiredColumns: input.requiredColumns,
+      enableTinyfishAgent,
     });
   };
 
@@ -157,6 +174,7 @@ function benchmarkContextFromInput(input: CollectionPopulatePipelineInput) {
 function collectionPipelineResultToPopulateRuntimeResult(input: {
   pipeline: CollectionPipelineResult;
   requiredColumns: string[];
+  enableTinyfishAgent: boolean;
 }): PopulateRuntimeResult {
   const records = selectOutputRecords(input.pipeline);
   const qualityById = qualityByRecordId(input.pipeline.report.quality?.records);
@@ -168,16 +186,57 @@ function collectionPipelineResultToPopulateRuntimeResult(input: {
       qualityById,
     })
   );
+  const capabilityDiagnostics = capabilityDiagnosticsFromReport({
+    report: input.pipeline.report,
+    enableTinyfishAgent: input.enableTinyfishAgent,
+  });
 
   return {
     rows,
     validationIssues: [
       ...(input.pipeline.report.errors ?? []),
+      ...capabilityDiagnostics,
       ...(rows.length === 0 ? ["No rows returned from collection pipeline."] : []),
     ],
     usage: usageFromPipeline(input.pipeline),
     metrics: metricsFromReport(input.pipeline.report),
   };
+}
+
+function capabilityDiagnosticsFromReport(input: {
+  report: CollectionPipelineResult["report"];
+  enableTinyfishAgent: boolean;
+}): string[] {
+  if (input.enableTinyfishAgent) {
+    return [];
+  }
+  const agentRequiredOutcomes = (input.report.sources?.outcomes ?? []).filter(
+    isAgentRequiredSourceOutcome
+  );
+  if (agentRequiredOutcomes.length === 0) {
+    return [];
+  }
+
+  const statusCounts = new Map<string, number>();
+  for (const outcome of agentRequiredOutcomes) {
+    const status = outcome.triage_status as string;
+    statusCounts.set(status, (statusCounts.get(status) ?? 0) + 1);
+  }
+  const statusSummary = Array.from(statusCounts.entries())
+    .map(([status, count]) => `${status}=${count}`)
+    .join(", ");
+
+  return [
+    `Capability diagnostic: TinyFish Agent disabled; triage requested browser/form/detail follow-up for ${agentRequiredOutcomes.length} page(s) (${statusSummary}). Enable COLLECTION_AGENT_ENABLE_AGENT=true for live navigation.`,
+  ];
+}
+
+function isAgentRequiredSourceOutcome(outcome: CollectionSourceOutcome): boolean {
+  return (
+    typeof outcome.triage_status === "string" &&
+    AGENT_REQUIRED_TRIAGE_STATUSES.has(outcome.triage_status) &&
+    outcome.outcome !== "success"
+  );
 }
 
 function selectOutputRecords(

@@ -31,6 +31,7 @@ import { join } from "node:path";
 export interface AgentDeferredEntry {
   url: string;
   status: SourceStatus;
+  reason: "agent_budget" | "agent_disabled";
 }
 
 export interface ProcessPagesResult {
@@ -216,6 +217,7 @@ export async function processFetchedPages(options: {
 
   const extractPages: { page: FetchedPage; triage: SourceTriageResult }[] = [];
   const agentQueue: { page: FetchedPage; triage: SourceTriageResult }[] = [];
+  const agentDisabledDeferredEntries: AgentDeferredEntry[] = [];
 
   for (const triage of triageResults) {
     bumpStatus(summary, triage.status);
@@ -241,6 +243,11 @@ export async function processFetchedPages(options: {
         extractPages.push({ page, triage });
       } else if (sourcePolicy.requiresOfficialSource) {
         summary.skipped += 1;
+        agentDisabledDeferredEntries.push({
+          url: triage.final_url || page.url,
+          status: triage.status,
+          reason: "agent_disabled",
+        });
         options.log(
           options.label,
           `Agent disabled — skip navigation-only official source ${triage.final_url} [${triage.status}]`,
@@ -296,17 +303,21 @@ export async function processFetchedPages(options: {
 
   const agentBudget = agentEnabled ? config.maxAgentRunsPerPhase : 0;
   const toRun = agentQueue.slice(0, agentBudget);
-  const deferredEntries: AgentDeferredEntry[] = agentQueue
-    .slice(agentBudget)
-    .map(({ page, triage }) => ({
-      url: triage.final_url || page.url,
-      status: triage.status,
-    }));
+  const deferredEntries: AgentDeferredEntry[] = [
+    ...agentDisabledDeferredEntries,
+    ...agentQueue
+      .slice(agentBudget)
+      .map(({ page, triage }) => ({
+        url: triage.final_url || page.url,
+        status: triage.status,
+        reason: "agent_budget" as const,
+      })),
+  ];
 
   if (deferredEntries.length > 0) {
     options.log(
       options.label,
-      `Agent budget: running ${toRun.length}/${agentQueue.length} (${deferredEntries.length} deferred)`,
+      `Agent capability: running ${toRun.length}/${agentQueue.length} (${deferredEntries.length} deferred)`,
     );
   }
 
