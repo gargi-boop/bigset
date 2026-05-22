@@ -1046,8 +1046,10 @@ async function rescoreBenchmarkRun({ runDirectory, prompts, config }) {
       continue;
     }
 
-    const artifactDirectory = laneResult.artifactDirectory ??
-      join(runDirectory, laneResult.system, laneResult.promptId);
+    const artifactDirectory = await resolveRescoreArtifactDirectory({
+      runDirectory,
+      laneResult,
+    });
     const parsedPayload = await readJsonOrNull(join(artifactDirectory, "parsed-output.json"));
     const stdout = await readTextOrEmpty(join(artifactDirectory, "stdout.txt"));
     const stderr = await readTextOrEmpty(join(artifactDirectory, "stderr.txt"));
@@ -1136,7 +1138,47 @@ async function rescoreBenchmarkRun({ runDirectory, prompts, config }) {
   };
 }
 
-function scoreBenchmarkRows(input) {
+async function resolveRescoreArtifactDirectory({ runDirectory, laneResult }) {
+  const declaredArtifactDirectory = laneResult.artifactDirectory;
+  const candidates = [];
+
+  if (declaredArtifactDirectory) {
+    candidates.push(declaredArtifactDirectory);
+
+    const normalizedArtifactDirectory = declaredArtifactDirectory.replaceAll("\\", "/");
+    const runDirectoryName = runDirectory.split(/[\\/]/).filter(Boolean).at(-1);
+    const runDirectoryMarker = runDirectoryName ? `${runDirectoryName}/` : null;
+    const markerIndex = runDirectoryMarker
+      ? normalizedArtifactDirectory.indexOf(runDirectoryMarker)
+      : -1;
+
+    if (markerIndex >= 0) {
+      const artifactPathWithinRun = normalizedArtifactDirectory.slice(
+        markerIndex + runDirectoryMarker.length
+      );
+      candidates.push(join(runDirectory, ...artifactPathWithinRun.split("/")));
+    }
+
+    candidates.push(
+      join(
+        runDirectory,
+        laneResult.system,
+        normalizedArtifactDirectory.split("/").filter(Boolean).at(-1) ?? laneResult.promptId
+      )
+    );
+  }
+
+  candidates.push(join(runDirectory, laneResult.system, laneResult.promptId));
+
+  for (const candidate of uniqueStrings(candidates)) {
+    const parsedPayload = await readJsonOrNull(join(candidate, "parsed-output.json"));
+    if (parsedPayload) return candidate;
+  }
+
+  return candidates[0];
+}
+
+export function scoreBenchmarkRows(input) {
   const answerKey = answerKeyForPrompt(input.promptDefinition);
   const rowTexts = input.rows.map(rowSearchText);
   const validationIssueText = input.validationIssues.join(" ").toLowerCase();
@@ -1501,7 +1543,7 @@ function rowCells(row) {
 }
 
 function rowSourceUrls(row, cells) {
-  return [
+  return uniqueStrings([
     ...stringArrayValue(row?.sourceUrls),
     ...stringArrayValue(row?.sources),
     ...stringArrayValue(row?.source_urls),
@@ -1511,7 +1553,28 @@ function rowSourceUrls(row, cells) {
     ...singleStringArray(row?.source_url),
     ...singleStringArray(cells?.source_url),
     ...singleStringArray(cells?.sourceUrl),
-  ].filter((value) => value.startsWith("http"));
+    ...urlLikeCellValues(cells),
+  ].filter((value) => value.startsWith("http")));
+}
+
+function urlLikeCellValues(cells) {
+  if (!isRecord(cells)) return [];
+  return Object.entries(cells)
+    .filter(([key, value]) =>
+      isUrlLikeCellName(key) && typeof value === "string"
+    )
+    .map(([, value]) => value);
+}
+
+function isUrlLikeCellName(name) {
+  const lower = String(name).toLowerCase();
+  return lower === "url" ||
+    lower.endsWith("_url") ||
+    lower.includes("url") ||
+    lower === "website" ||
+    lower.endsWith("_website") ||
+    lower === "homepage" ||
+    lower.endsWith("_homepage");
 }
 
 function rowSearchText(row) {

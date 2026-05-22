@@ -6,7 +6,15 @@ export function isHttpUrl(value: unknown): value is string {
 
 export function isUrlLikeColumnName(name: string): boolean {
   const lower = name.toLowerCase();
-  return lower === "url" || lower.endsWith("_url") || lower.includes("url");
+  return (
+    lower === "url" ||
+    lower.endsWith("_url") ||
+    lower.includes("url") ||
+    lower === "website" ||
+    lower.endsWith("_website") ||
+    lower === "homepage" ||
+    lower.endsWith("_homepage")
+  );
 }
 
 export function deriveRecordSourceUrls(input: {

@@ -59,3 +59,72 @@ test("collection extraction adds URL cell evidence when model omits evidence", (
     "https://developers.cloudflare.com/agents/guides/remote-mcp-server/",
   ]);
 });
+
+test("collection extraction treats official website cells as source URLs", () => {
+  const spec: DatasetSpec = {
+    intent_summary: "Official company websites.",
+    target_row_count: 1,
+    row_grain: "one row per company",
+    columns: [
+      {
+        name: "entity_name",
+        type: "string",
+        description: "Company name.",
+        required: true,
+      },
+      {
+        name: "official_website",
+        type: "string",
+        description: "Official website URL.",
+        required: true,
+      },
+      {
+        name: "description",
+        type: "string",
+        description: "Company description.",
+        required: true,
+      },
+      {
+        name: "source_url",
+        type: "string",
+        description: "Where the row facts were found.",
+        required: true,
+      },
+    ],
+    dedupe_keys: ["entity_name"],
+    search_queries: ["Vietnam fintech official websites"],
+    extraction_hints: "Prefer official company websites.",
+  };
+
+  const record = finalizeExtractedRecord(
+    {
+      row: {
+        entity_name: "MoMo",
+        official_website: "https://momo.vn",
+        description: "Vietnamese fintech wallet.",
+        source_url: "https://www.startupblink.com/top-startups/vietnam",
+      },
+      evidence: [
+        {
+          field: "description",
+          quote: "MoMo is a FinTech startup.",
+        },
+      ],
+      extraction_confidence: 0.8,
+    },
+    "https://www.startupblink.com/top-startups/vietnam",
+    spec,
+  );
+
+  assert.deepEqual(record.source_urls, [
+    "https://www.startupblink.com/top-startups/vietnam",
+    "https://momo.vn",
+  ]);
+  assert.ok(
+    record.evidence.some((item) =>
+      item.field === "official_website" &&
+      item.url === "https://momo.vn" &&
+      item.quote === "https://momo.vn"
+    ),
+  );
+});
