@@ -26,7 +26,7 @@ export const searchWebTool = createTool({
 
     const apiKey = process.env.TINYFISH_API_KEY;
     if (!apiKey)
-      return { error: "TINYFISH_API_KEY is not configured. Web search is unavailable — use synthetic data instead." };
+      return { error: "TINYFISH_API_KEY is not configured. Web search is unavailable; insert only rows supported by available sources." };
 
     const url = `https://api.search.tinyfish.ai?query=${encodeURIComponent(query)}`;
     console.log(`[search_web] Searching: "${query}"`);
@@ -44,10 +44,10 @@ export const searchWebTool = createTool({
         const body = await res.text();
         console.error(`[search_web] API error ${res.status}:`, body.slice(0, 200));
         if (res.status === 429)
-          return { error: "Search rate limit hit. Wait a moment, or skip web search and use synthetic data." };
+          return { error: "Search rate limit hit. Wait a moment, or insert only rows supported by already available sources." };
         if (res.status === 401)
-          return { error: "Invalid TINYFISH_API_KEY. Web search unavailable — use synthetic data." };
-        return { error: `Search API returned HTTP ${res.status}. Try a different query or use synthetic data.` };
+          return { error: "Invalid TINYFISH_API_KEY. Web search unavailable." };
+        return { error: `Search API returned HTTP ${res.status}. Try a different query.` };
       }
 
       const data = await res.json();
@@ -59,15 +59,15 @@ export const searchWebTool = createTool({
 
       console.log(`[search_web] Got ${results.length} results`);
       if (results.length === 0)
-        return { results: [], error: "No results found for this query. Try a broader search or use synthetic data." };
+        return { results: [], error: "No results found for this query. Try a broader search." };
       return { results };
     } catch (err) {
       clearTimeout(timeout);
       if (err instanceof Error && err.name === "AbortError")
-        return { error: "Search timed out. Skip web search and use synthetic data." };
+        return { error: "Search timed out. Try a narrower query or use already available sources only." };
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[search_web] Failed:`, msg);
-      return { error: `Search failed: ${msg}. Skip web search and use synthetic data.` };
+      return { error: `Search failed: ${msg}. Use already available sources only.` };
     }
   },
 });
@@ -92,7 +92,7 @@ export const fetchPageTool = createTool({
 
     const apiKey = process.env.TINYFISH_API_KEY;
     if (!apiKey)
-      return { error: "TINYFISH_API_KEY is not configured. Page fetch is unavailable — use data from search snippets instead." };
+      return { error: "TINYFISH_API_KEY is not configured. Page fetch is unavailable; use source-backed search snippets only." };
 
     console.log(`[fetch_page] Fetching: ${targetUrl}`);
 
@@ -114,7 +114,7 @@ export const fetchPageTool = createTool({
         const body = await res.text();
         console.error(`[fetch_page] API error ${res.status}:`, body.slice(0, 200));
         if (res.status === 429)
-          return { error: "Fetch rate limit hit. Use data from search snippets instead." };
+          return { error: "Fetch rate limit hit. Use source-backed search snippets only." };
         if (res.status === 401)
           return { error: "Invalid TINYFISH_API_KEY. Page fetch unavailable." };
         return { error: `Fetch API returned HTTP ${res.status}. Try a different URL or use search snippet data.` };

@@ -20,9 +20,9 @@ export const populateAgent = new Agent({
 
 1. Search the web for data that fits the dataset topic.
 2. Fetch 1-2 pages to get details.
-3. Call insert_row for each row using what you found. Don't stop until you've inserted all the rows asked for.
+3. Call insert_row only for rows supported by search or fetched page content.
 
-If you can't find enough real data, make up realistic data to fill the rest. Every row must be inserted with insert_row.`,
+Never make up rows or missing cell values. If you can't find enough real data, insert fewer rows and explain the gap in your final response.`,
   model: openrouter("anthropic/claude-sonnet-4-6"),
   tools: {
     insert_row: insertRowTool,

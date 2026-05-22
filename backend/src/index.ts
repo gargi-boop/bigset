@@ -65,7 +65,11 @@ await fastify.register(async (instance) => {
       if (!dataset) {
         return reply.code(404).send({ error: "Dataset not found" });
       }
-      if (dataset.ownerId !== req.auth.userId) {
+      const authenticatedUserId = req.auth?.userId;
+      if (!authenticatedUserId) {
+        return reply.code(401).send({ error: "Unauthenticated" });
+      }
+      if (dataset.ownerId !== authenticatedUserId) {
         return reply.code(403).send({ error: "Not authorized to populate this dataset" });
       }
 

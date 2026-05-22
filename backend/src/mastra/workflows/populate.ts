@@ -44,7 +44,7 @@ ${JSON.stringify(columnNames)}
 Example insert_row call:
 insert_row({ datasetId: "${inputData.datasetId}", data: { ${columnNames.map((n) => `"${n}": <value>`).join(", ")} } })
 
-Search the web for real data about this topic. Then call insert_row to fill in 10 rows. Use real data from your search. Fill in any gaps with realistic fake data.`;
+Search the web for real data about this topic. Then call insert_row for up to 10 source-backed rows. Never invent rows or cell values. If sources only support fewer than 10 rows, insert only the verified rows and explain what was missing.`;
 
     console.log(`[build-prompt] Built prompt for ${inputData.datasetName} (${inputData.columns.length} columns)`);
     return { prompt };
