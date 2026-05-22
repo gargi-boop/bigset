@@ -21,6 +21,32 @@ Real Mastra benchmark runs require `OPENROUTER_API_KEY` and `TINYFISH_API_KEY`
 loaded execution-only. If either is missing, the adapter returns a blocked
 benchmark result instead of touching app data.
 
+## Verify Self-Healing Stack
+
+Use this before asking someone else to migrate a new collection agent into the
+app path:
+
+```bash
+make verify-self-healing
+```
+
+That command runs backend tests, backend build, adapter syntax checks, and a
+no-key benchmark smoke that must produce a clean `blocked` result without
+spending OpenRouter or TinyFish credits.
+
+Live checks are explicit:
+
+```bash
+bash scripts/verify-self-healing-stack.sh --real-benchmark
+bash scripts/verify-self-healing-stack.sh --convex-push --dataset-id <dataset-id>
+bash scripts/verify-self-healing-stack.sh --convex-push --dataset-id <dataset-id> --commit
+```
+
+The live benchmark and dataset smoke expect required env vars to already be
+exported in the shell. They print only missing key names and never print secret
+values. The `--convex-push` mode still uses the existing `make convex-push`
+target, which requires `frontend/.env.local`.
+
 ## Benchmark Env
 
 For each prompt the runner sets:
