@@ -118,14 +118,14 @@ const answerKeysByPromptId = {
     officialSourceDomains: ["openai.com", "anthropic.com", "deepmind.google"],
   },
   "saas-pricing-pages": {
-    verifiedAt,
+    verifiedAt: "2026-05-22",
     sourceUrls: [
       "https://stripe.com/pricing",
-      "https://www.paddle.com/billing",
+      "https://www.paddle.com/pricing",
       "https://www.chargebee.com/pricing/",
     ],
     scoringNotes:
-      "Pass requires all three vendors, official domains, and visible plan or price text. Paddle may route pricing through Billing or sales-led pages.",
+      "Pass requires all three vendors, official domains, and visible plan or price text. Paddle's current pricing page can show Checkout transaction pricing.",
     expectedBehavior: "answer",
     requiredColumns: ["entity_name", "pricing_page_url", "plan_or_price", "source_url"],
     expectedEntities: [
@@ -141,7 +141,7 @@ const answerKeysByPromptId = {
         label: "Paddle",
         aliases: ["paddle"],
         allowedSourceDomains: ["paddle.com"],
-        requiredText: ["merchant of record", "billing"],
+        requiredText: ["checkout", "5%", "50"],
       },
       {
         id: "chargebee",
@@ -155,14 +155,14 @@ const answerKeysByPromptId = {
     officialSourceDomains: ["stripe.com", "paddle.com", "chargebee.com"],
   },
   "earnings-release-pages": {
-    verifiedAt,
+    verifiedAt: "2026-05-22",
     sourceUrls: [
       "https://www.apple.com/newsroom/2026/04/apple-reports-second-quarter-results/",
       "https://www.microsoft.com/en-us/investor/earnings/fy-2026-q3/press-release-webcast",
-      "https://investor.nvidia.com/news/press-release-details/2026/NVIDIA-Announces-Financial-Results-for-Fourth-Quarter-and-Fiscal-2026/",
+      "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-first-quarter-fiscal-2027",
     ],
     scoringNotes:
-      "As of 2026-05-20, Apple latest verified release is fiscal 2026 Q2 on 2026-04-30, Microsoft is FY26 Q3 on 2026-04-29, and NVIDIA is Q4 fiscal 2026 on 2026-02-25.",
+      "As of 2026-05-22, Apple latest verified release is fiscal 2026 Q2 on 2026-04-30, Microsoft is FY26 Q3 on 2026-04-29, and NVIDIA is Q1 fiscal 2027 on 2026-05-20.",
     expectedBehavior: "answer",
     requiredColumns: ["entity_name", "release_date", "fiscal_quarter", "source_url"],
     expectedEntities: [
@@ -185,7 +185,7 @@ const answerKeysByPromptId = {
         label: "NVIDIA",
         aliases: ["nvidia"],
         allowedSourceDomains: ["nvidia.com"],
-        requiredText: ["fourth quarter", "q4", "fiscal 2026"],
+        requiredText: ["first quarter", "q1", "fiscal 2027", "may 20"],
       },
     ],
     minimumExpectedEntityMatches: 3,

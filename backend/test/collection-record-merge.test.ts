@@ -45,6 +45,41 @@ const docsSpec: DatasetSpec = {
   extraction_hints: "Prefer official docs pages.",
 };
 
+const earningsSpec: DatasetSpec = {
+  intent_summary: "Latest earnings releases.",
+  target_row_count: 3,
+  row_grain: "one row per company",
+  columns: [
+    {
+      name: "entity_name",
+      type: "string",
+      description: "Company name.",
+      required: true,
+    },
+    {
+      name: "release_date",
+      type: "date",
+      description: "Release date.",
+      required: true,
+    },
+    {
+      name: "fiscal_quarter",
+      type: "string",
+      description: "Fiscal quarter.",
+      required: true,
+    },
+    {
+      name: "source_url",
+      type: "string",
+      description: "Official earnings release source URL.",
+      required: true,
+    },
+  ],
+  dedupe_keys: ["entity_name"],
+  search_queries: ["latest earnings releases"],
+  extraction_hints: "Prefer official dated earnings release pages.",
+};
+
 test("collection record merge does not attach evidence from conflicting duplicate rows", () => {
   const officialRecord = record({
     row: {
@@ -322,6 +357,78 @@ test("collection record merge drops docs URL evidence from unrelated source page
   );
   assert.deepEqual(merged.source_urls, [
     "https://developers.cloudflare.com/agents/model-context-protocol/",
+  ]);
+});
+
+test("collection record merge folds corporate suffix variants and prefers stronger source pages", () => {
+  const merged = mergeRecords(earningsSpec, [
+    record({
+      row: {
+        entity_name: "Nvidia",
+        release_date: "2026-02-25",
+        fiscal_quarter: "Q4 Fiscal 2026",
+        source_url: "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-fourth-quarter-and-fiscal-2026",
+      },
+      evidence: [
+        evidence(
+          "release_date",
+          "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-fourth-quarter-and-fiscal-2026",
+          "February 25, 2026",
+        ),
+        evidence(
+          "fiscal_quarter",
+          "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-fourth-quarter-and-fiscal-2026",
+          "fourth quarter fiscal 2026",
+        ),
+        evidence(
+          "source_url",
+          "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-fourth-quarter-and-fiscal-2026",
+          "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-fourth-quarter-and-fiscal-2026",
+        ),
+      ],
+      sourceUrls: [
+        "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-fourth-quarter-and-fiscal-2026",
+      ],
+    }),
+    record({
+      row: {
+        entity_name: "NVIDIA Corporation",
+        release_date: "2026-05-20",
+        fiscal_quarter: "FY27 Q1",
+        source_url: "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-first-quarter-fiscal-2027",
+      },
+      evidence: [
+        evidence(
+          "release_date",
+          "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-first-quarter-fiscal-2027",
+          "May 20, 2026",
+        ),
+        evidence(
+          "fiscal_quarter",
+          "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-first-quarter-fiscal-2027",
+          "first quarter fiscal 2027",
+        ),
+        evidence(
+          "source_url",
+          "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-first-quarter-fiscal-2027",
+          "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-first-quarter-fiscal-2027",
+        ),
+      ],
+      sourceUrls: [
+        "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-first-quarter-fiscal-2027",
+      ],
+    }),
+  ]).records;
+
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0]?.row.entity_name, "Nvidia");
+  assert.equal(merged[0]?.row.fiscal_quarter, "FY27 Q1");
+  assert.equal(
+    merged[0]?.row.source_url,
+    "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-first-quarter-fiscal-2027",
+  );
+  assert.deepEqual(merged[0]?.source_urls, [
+    "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-first-quarter-fiscal-2027",
   ]);
 });
 

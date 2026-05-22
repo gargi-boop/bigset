@@ -13,7 +13,11 @@ import {
   type ExtractedRecord,
   type FetchedPage,
 } from "../models/schemas.js";
-import { deriveRecordSourceUrls } from "../records/source-urls.js";
+import {
+  deriveRecordSourceUrls,
+  isHttpUrl,
+  isUrlLikeColumnName,
+} from "../records/source-urls.js";
 
 /**
  * Extraction is always one source per LLM call in process-pages.ts:
@@ -170,6 +174,31 @@ function provenanceUrlColumns(spec: DatasetSpec): ColumnDef[] {
   return spec.columns.filter(isProvenanceUrlColumn);
 }
 
+function isUrlLikeColumn(column: ColumnDef): boolean {
+  return isUrlLikeColumnName(column.name);
+}
+
+function addUrlCellEvidence(
+  row: Record<string, string | number | boolean | null>,
+  evidence: ExtractedRecord["evidence"],
+  spec: DatasetSpec,
+): void {
+  const fieldsWithEvidence = new Set(evidence.map((item) => item.field));
+  for (const column of spec.columns) {
+    if (!isUrlLikeColumn(column) || fieldsWithEvidence.has(column.name)) {
+      continue;
+    }
+    const value = row[column.name];
+    if (!isHttpUrl(value)) continue;
+    evidence.push({
+      field: column.name,
+      url: value.trim(),
+      quote: value.trim(),
+    });
+    fieldsWithEvidence.add(column.name);
+  }
+}
+
 /** Attach evidence URLs and source_urls; keep LLM row and provenance values. */
 export function finalizeExtractedRecord(
   record: LlmExtractionRecord,
@@ -190,6 +219,7 @@ export function finalizeExtractedRecord(
       row[column.name] = pageUrl;
     }
   }
+  addUrlCellEvidence(row, evidence, spec);
 
   const source_urls = deriveRecordSourceUrls({
     spec,

@@ -1,7 +1,9 @@
 import type { DatasetSpec, ExtractedRecord } from "../models/schemas.js";
 import {
   deriveRecordSourceUrls,
+  isUrlLikeColumnName,
   scoreDocsUrlForOfficialSource,
+  scoreUrlForCanonicalSource,
 } from "../records/source-urls.js";
 
 function normalizeValue(value: unknown): string {
@@ -28,7 +30,12 @@ function valuesMatch(a: unknown, b: unknown): boolean {
 /** Normalize entity names for stable primary-key matching. */
 export function normalizePrimaryKey(value: unknown): string {
   return normalizeValue(value)
+    .replace(
+      /\b(?:incorporated|inc|corporation|corp|company|co|llc|ltd|limited|plc)\b\.?$/i,
+      "",
+    )
     .replace(/\s+/g, " ")
+    .trim()
     .replace(/[''`]/g, "'");
 }
 
@@ -136,7 +143,12 @@ export function mergePair(
 ): ExtractedRecord {
   const row: Record<string, string | number | boolean | null> = { ...a.row };
   const fieldsFilledFromIncoming = new Set<string>();
-  let replacedDocsUrlFromIncoming = false;
+  const shouldPreferIncomingCanonicalRecord = prefersIncomingCanonicalRecord(
+    a,
+    b,
+    spec,
+  );
+  let replacedCanonicalUrlFromIncoming = false;
 
   for (const col of spec.columns) {
     const current = row[col.name];
@@ -147,18 +159,26 @@ export function mergePair(
     if (currentEmpty && incomingFilled) {
       row[col.name] = incoming ?? null;
       fieldsFilledFromIncoming.add(col.name);
+    } else if (
+      incomingFilled &&
+      shouldPreferIncomingCanonicalRecord &&
+      !spec.dedupe_keys.includes(col.name)
+    ) {
+      row[col.name] = incoming ?? null;
+      fieldsFilledFromIncoming.add(col.name);
+      replacedCanonicalUrlFromIncoming ||= isCanonicalSourceUrlColumn(col.name);
     } else if (incomingFilled && shouldReplaceCell(col.name, current, incoming)) {
       row[col.name] = incoming ?? null;
       fieldsFilledFromIncoming.add(col.name);
-      replacedDocsUrlFromIncoming ||= isDocsUrlColumn(col.name);
+      replacedCanonicalUrlFromIncoming ||= isCanonicalSourceUrlColumn(col.name);
     }
   }
 
-  if (replacedDocsUrlFromIncoming) {
+  if (replacedCanonicalUrlFromIncoming) {
     for (const col of spec.columns) {
       const incoming = b.row[col.name];
       if (
-        isDocsCompanionColumn(col.name) &&
+        shouldReplaceCompanionColumn(col.name, spec) &&
         !isEmpty(incoming) &&
         !spec.dedupe_keys.includes(col.name)
       ) {
@@ -186,7 +206,7 @@ export function mergePair(
       evidenceFields.add(item.field);
     }
   }
-  const coherentEvidence = filterEvidenceForRetainedDocsUrl(spec, row, evidence);
+  const coherentEvidence = filterEvidenceForRetainedCanonicalUrl(spec, row, evidence);
 
   const extractionConfidence = Math.max(
     a.extraction_confidence ?? 0,
@@ -215,7 +235,7 @@ function shouldMergeIncomingEvidence(input: {
   fieldsFilledFromIncoming: Set<string>;
 }): boolean {
   if (
-    isDocsUrlColumn(input.field) &&
+    isCanonicalSourceUrlColumn(input.field) &&
     !urlsReferenceSamePage(
       input.incomingRow[input.field],
       input.mergedRow[input.field],
@@ -234,13 +254,57 @@ function shouldReplaceCell(
   current: string | number | boolean | null | undefined,
   incoming: string | number | boolean | null | undefined,
 ): boolean {
-  if (!isDocsUrlColumn(columnName)) {
+  if (!isCanonicalSourceUrlColumn(columnName)) {
     return false;
   }
   return (
-    scoreDocsUrlForOfficialSource(incoming) >
-    scoreDocsUrlForOfficialSource(current)
+    scoreUrlForCanonicalSource(incoming) > scoreUrlForCanonicalSource(current)
   );
+}
+
+function prefersIncomingCanonicalRecord(
+  current: ExtractedRecord,
+  incoming: ExtractedRecord,
+  spec: DatasetSpec,
+): boolean {
+  const currentScore = bestCanonicalScore(current, spec);
+  const incomingScore = bestCanonicalScore(incoming, spec);
+  if (incomingScore > currentScore) {
+    return true;
+  }
+  if (incomingScore < currentScore) {
+    return false;
+  }
+
+  const currentDate = bestRecordTimestamp(current, spec);
+  const incomingDate = bestRecordTimestamp(incoming, spec);
+  return incomingDate !== null && currentDate !== null && incomingDate > currentDate;
+}
+
+function bestCanonicalScore(record: ExtractedRecord, spec: DatasetSpec): number {
+  let bestScore = 0;
+  for (const column of spec.columns) {
+    if (!isCanonicalSourceUrlColumn(column.name)) continue;
+    bestScore = Math.max(
+      bestScore,
+      scoreUrlForCanonicalSource(record.row[column.name]),
+    );
+  }
+  return bestScore;
+}
+
+function bestRecordTimestamp(
+  record: ExtractedRecord,
+  spec: DatasetSpec,
+): number | null {
+  const timestamps = spec.columns
+    .filter((column) => column.name.toLowerCase().includes("date"))
+    .map((column) => Date.parse(String(record.row[column.name] ?? "")))
+    .filter(Number.isFinite);
+  if (timestamps.length === 0) {
+    return null;
+  }
+  return Math.max(...timestamps);
 }
 
 function isDocsUrlColumn(columnName: string): boolean {
@@ -262,60 +326,91 @@ function isDocsCompanionColumn(columnName: string): boolean {
   );
 }
 
-function filterEvidenceForRetainedDocsUrl(
+function isCanonicalSourceUrlColumn(columnName: string): boolean {
+  return isUrlLikeColumnName(columnName);
+}
+
+function shouldReplaceCompanionColumn(
+  columnName: string,
+  spec: DatasetSpec,
+): boolean {
+  if (spec.dedupe_keys.includes(columnName)) {
+    return false;
+  }
+  return !isCanonicalSourceUrlColumn(columnName);
+}
+
+function filterEvidenceForRetainedCanonicalUrl(
   spec: DatasetSpec,
   row: Record<string, string | number | boolean | null>,
   evidence: ExtractedRecord["evidence"],
 ): ExtractedRecord["evidence"] {
-  const retainedDocsUrl = bestRetainedDocsUrl(spec, row);
-  if (!retainedDocsUrl) {
+  const retainedUrl = bestRetainedCanonicalUrl(spec, row);
+  if (!retainedUrl) {
     return evidence;
   }
 
   return evidence.filter((item) => {
-    if (isDocsUrlColumn(item.field)) {
+    if (isCanonicalSourceUrlColumn(item.field)) {
       return urlsReferenceSamePage(item.url, row[item.field]);
     }
 
     if (
       isDocsCompanionColumn(item.field) ||
+      isLikelySourceCompanionColumn(item.field) ||
       spec.dedupe_keys.includes(item.field)
     ) {
-      return sourceUrlSupportsRetainedDocsUrl(item.url, retainedDocsUrl);
+      return sourceUrlSupportsRetainedCanonicalUrl(item.url, retainedUrl);
     }
 
     return true;
   });
 }
 
-function bestRetainedDocsUrl(
+function bestRetainedCanonicalUrl(
   spec: DatasetSpec,
   row: Record<string, string | number | boolean | null>,
 ): string | null {
   let bestUrl: string | null = null;
   let bestScore = 0;
   for (const col of spec.columns) {
-    if (!isDocsUrlColumn(col.name)) continue;
+    if (!isCanonicalSourceUrlColumn(col.name)) continue;
     const value = row[col.name];
-    const score = scoreDocsUrlForOfficialSource(value);
+    const score = scoreUrlForCanonicalSource(value);
     if (typeof value === "string" && score > bestScore) {
       bestUrl = value;
       bestScore = score;
     }
   }
-  return bestScore >= 4 ? bestUrl : null;
+  return bestScore >= 2 ? bestUrl : null;
 }
 
-function sourceUrlSupportsRetainedDocsUrl(
+function isLikelySourceCompanionColumn(columnName: string): boolean {
+  const lower = columnName.toLowerCase();
+  return (
+    lower.includes("date") ||
+    lower.includes("quarter") ||
+    lower.includes("price") ||
+    lower.includes("plan") ||
+    lower.includes("title") ||
+    lower.includes("summary") ||
+    lower.includes("description")
+  );
+}
+
+function sourceUrlSupportsRetainedCanonicalUrl(
   evidenceUrl: unknown,
-  retainedDocsUrl: string,
+  retainedUrl: string,
 ): boolean {
-  if (urlsReferenceSamePage(evidenceUrl, retainedDocsUrl)) {
+  if (urlsReferenceSamePage(evidenceUrl, retainedUrl)) {
     return true;
   }
+  if (scoreDocsUrlForOfficialSource(retainedUrl) < 4) {
+    return false;
+  }
   return (
-    sameHostname(evidenceUrl, retainedDocsUrl) &&
-    scoreDocsUrlForOfficialSource(evidenceUrl) >= 4
+    sameHostname(evidenceUrl, retainedUrl) &&
+    scoreUrlForCanonicalSource(evidenceUrl) >= 2
   );
 }
 
