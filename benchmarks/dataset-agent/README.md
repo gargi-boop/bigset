@@ -7,9 +7,9 @@ benchmark env vars, runs one prompt, and prints one JSON object to stdout.
 
 ## Run Mastra Populate
 
-The Mastra adapter calls `runPopulateRuntime`, a direct callable runtime around
-the Mastra populate agent. It avoids the HTTP/auth route and uses an injected
-in-memory row sink so benchmark runs do not clear or insert Convex rows.
+The Mastra adapter calls the self-healing populate service around
+`runPopulateRuntime`. It avoids the HTTP/auth route, uses an isolated in-memory
+recipe store per prompt run, and never clears or inserts Convex rows.
 
 ```bash
 node benchmarks/dataset-agent/run-benchmark.mjs \

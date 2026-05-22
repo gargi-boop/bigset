@@ -25,32 +25,49 @@ if (missingRuntimeKeys.length > 0) {
   process.exit(0);
 }
 
-const { runPopulateRuntime } = await import(
-  "../../../backend/src/pipeline/populate-runtime.ts"
+const {
+  diagnosticRunForTick,
+  validationIssuesForSelfHealingTick,
+} = await import(
+  "../../../backend/src/pipeline/populate-self-healing-runner.ts"
+);
+const {
+  DefaultPopulateRecipeAuthor,
+  InMemoryPopulateRecipeStore,
+  MastraPopulateRecipeRuntime,
+  SelfHealingPopulateRecipeService,
+} = await import(
+  "../../../backend/src/pipeline/populate-self-healing.ts"
 );
 
-const result = await runPopulateRuntime({
-  context: {
-    datasetId: `benchmark-${safeIdSegment(promptId)}`,
-    datasetName: `benchmark_${safeIdSegment(promptId)}`,
-    description: prompt,
-    columns: requiredColumns.map((columnName) => ({
-      name: columnName,
-      type: inferPopulateColumnType(columnName),
-      description: `Benchmark requested column for ${promptQuality} prompt.`,
-    })),
-  },
-  maxRows: Number(process.env.BIGSET_MASTRA_BENCHMARK_MAX_ROWS ?? "10"),
+const context = {
+  datasetId: `benchmark-${safeIdSegment(promptId)}`,
+  datasetName: `benchmark_${safeIdSegment(promptId)}`,
+  description: prompt,
+  columns: requiredColumns.map((columnName) => ({
+    name: columnName,
+    type: inferPopulateColumnType(columnName),
+    description: `Benchmark requested column for ${promptQuality} prompt.`,
+  })),
+};
+const service = new SelfHealingPopulateRecipeService({
+  store: new InMemoryPopulateRecipeStore(),
+  runtime: new MastraPopulateRecipeRuntime({
+    maxRows: Number(process.env.BIGSET_MASTRA_BENCHMARK_MAX_ROWS ?? "10"),
+  }),
+  author: new DefaultPopulateRecipeAuthor(),
 });
+const tick = await service.tick({ datasetId: context.datasetId, context });
+const result = diagnosticRunForTick(tick);
 
 console.log(JSON.stringify({
-  rows: result.rows,
+  rows: result?.rows ?? [],
   validationIssues: [
-    ...result.validationIssues,
-    ...minimumColumnIssues(result.rows),
+    ...validationIssuesForSelfHealingTick(tick),
+    ...minimumColumnIssues(result?.rows ?? []),
   ],
-  usage: result.usage,
-  metrics: result.metrics,
+  usage: result?.usage ?? emptyUsage(),
+  metrics: result?.metrics ?? emptyMetrics(),
 }));
 
 function minimumColumnIssues(rows) {

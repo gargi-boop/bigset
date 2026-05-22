@@ -114,3 +114,35 @@ export const insertBatch = internalMutation({
     }
   },
 });
+
+export const replaceByDataset = internalMutation({
+  args: {
+    datasetId: v.id("datasets"),
+    rows: v.array(v.object({
+      data: v.record(v.string(), v.any()),
+      sources: v.optional(v.array(v.string())),
+    })),
+  },
+  handler: async (ctx, args) => {
+    const existingRows = await ctx.db
+      .query("datasetRows")
+      .withIndex("by_dataset", (q) => q.eq("datasetId", args.datasetId))
+      .collect();
+
+    for (const row of existingRows) {
+      await ctx.db.delete(row._id);
+    }
+    for (const row of args.rows) {
+      await ctx.db.insert("datasetRows", {
+        datasetId: args.datasetId,
+        data: row.data,
+        sources: row.sources,
+      });
+    }
+
+    return {
+      clearedRowCount: existingRows.length,
+      insertedRowCount: args.rows.length,
+    };
+  },
+});

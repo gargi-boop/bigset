@@ -193,6 +193,36 @@ export class MastraPopulateRecipeRuntime implements PopulateRecipeRuntime {
   }
 }
 
+export class DefaultPopulateRecipeAuthor implements PopulateRecipeAuthor {
+  async generateRecipe(
+    input: PopulateRecipeAuthorGenerateInput
+  ): Promise<PopulateRecipe> {
+    return createPopulateRecipe({
+      recipeId: populateRecipeId(input.context.datasetId, input.nextVersion),
+      datasetId: input.context.datasetId,
+      version: input.nextVersion,
+      sourceDescription: input.context.description,
+      requestedColumns: requestedColumnNames(input.context),
+      runtimeInstructions: initialRuntimeInstructions(input.context),
+      createdBy: "system",
+    });
+  }
+
+  async repairRecipe(
+    input: PopulateRecipeAuthorRepairInput
+  ): Promise<PopulateRecipe> {
+    return createPopulateRecipe({
+      recipeId: populateRecipeId(input.context.datasetId, input.nextVersion),
+      datasetId: input.context.datasetId,
+      version: input.nextVersion,
+      sourceDescription: input.context.description,
+      requestedColumns: requestedColumnNames(input.context),
+      runtimeInstructions: repairRuntimeInstructions(input),
+      createdBy: "system",
+    });
+  }
+}
+
 export class SelfHealingPopulateRecipeService {
   constructor(
     private readonly input: {
@@ -502,6 +532,50 @@ function normalizeCandidateRecipe(input: {
     sourceDescription: input.context.description,
     requestedColumns: input.context.columns.map((column) => column.name),
   };
+}
+
+function populateRecipeId(datasetId: string, version: number): string {
+  return `${safePathSegment(datasetId)}-recipe-v${version}`;
+}
+
+function requestedColumnNames(context: DatasetContext): string[] {
+  return context.columns.map((column) => column.name);
+}
+
+function initialRuntimeInstructions(context: DatasetContext): string {
+  return [
+    "Use search_web before fetch_page unless an official source URL is already obvious.",
+    "Prefer official docs, pricing, blog, product, or company pages over third-party summaries.",
+    "Every inserted row must include source_url and evidence_quote cells when those columns exist.",
+    "Every inserted row must include at least one source URL and one evidence quote.",
+    `Requested columns: ${requestedColumnNames(context).join(", ")}.`,
+  ].join("\n");
+}
+
+function repairRuntimeInstructions(input: PopulateRecipeAuthorRepairInput): string {
+  const failureSummary = [
+    ...input.failedRun.productionValidation.criticalIssues,
+    ...input.failedRun.validationIssues,
+  ]
+    .map((issue) => issue.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+  const priorInstructions = input.activeRecipe.runtimeInstructions.trim();
+  return [
+    priorInstructions || initialRuntimeInstructions(input.context),
+    "",
+    "Repair focus from previous failed run:",
+    ...failureSummary.map((issue) => `- ${truncateInstruction(issue, 240)}`),
+    "- Do not reuse rows that failed validation without fixing source URL and evidence quote coverage.",
+    "- If expected entities were missing, collect one source-backed row per missing entity before returning.",
+  ].join("\n");
+}
+
+function truncateInstruction(value: string, maxLength: number): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `${value.slice(0, maxLength - 12)} [truncated]`;
 }
 
 function contextWithRecipeInstructions(
