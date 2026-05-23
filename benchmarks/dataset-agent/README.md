@@ -68,15 +68,22 @@ node benchmarks/dataset-agent/run-benchmark.mjs \
   --system collection-self-heal='node --import ./backend/node_modules/tsx/dist/esm/index.mjs benchmarks/dataset-agent/adapters/collection-self-healing-adapter.mjs'
 ```
 
-Latest `mcp-docs-pages` Agent-enabled canary evidence:
+Latest `mcp-docs-pages` Agent-enabled canary evidence, rescored with the
+rejected-candidate gate:
 
-- artifact: `benchmark-results/collection-agent-canary-mcp-20260523-001`
-- status: failed, not blocked
-- rows/evidence: 3 rows, 12 evidence quotes, 10 source URLs
-- cost: about `$0.053552`
-- signal: Agent runs complete and claim support reaches `1.0`, but domain
-  accuracy stays `0.667`; next fix is source/domain coherence, not more Agent
-  plumbing.
+- artifact: `benchmark-results/collection-agent-provenance-mcp-20260523-001`
+- status: failed with `failureCategory: "capability_gate"`
+- rows/evidence: 3 rows, 5 evidence quotes, 5 source URLs
+- score: factual accuracy `1.0`, entity coverage `1.0`, domain accuracy `1.0`,
+  claim support `1.0`
+- Agent signal: 1 Agent run reported 20 steps, but emitted no explicit
+  `browser_actions`
+- self-healing signal: `selfHealingAction: "candidate_rejected"`
+- Playwright signal: `playwrightCandidateStatus: "not_ready"` with zero
+  replayable browser steps
+- conclusion: rows are useful debug evidence, but not a promotable cron recipe.
+  Next fix is producer-side browser action emission plus a promoted
+  self-healing run, not a Playwright compiler yet.
 
 App and CLI collection-runtime runs use the same runner shape, but load it from
 `POPULATE_COLLECTION_RUNNER_MODULE` when `POPULATE_AGENT_RUNTIME=collection`.

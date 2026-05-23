@@ -31,6 +31,13 @@ the collection pipeline is migrated into BigSet.
 - PR #47-#52 document and improve collection benchmark evidence, source
   coherence, official-source support, and URL-like source evidence. PR #52 fixes
   the `official_website` / `company_website` / `product_url` scoring class.
+- PR #53-#60 add the self-healing process trace, Playwright readiness artifact,
+  explicit browser-action ingestion contract, Agent provenance diagnostics,
+  readiness benchmark gate, and rejected-candidate benchmark gate.
+- PR #60 is the current top of the draft self-healing/collection stack. It makes
+  `selfHealingAction: "candidate_rejected"` fail benchmark scoring with
+  `failureCategory: "capability_gate"`, even when diagnostic rows match answer
+  keys.
 - `feat/data-collection-agent-v14` is no longer the branch to build on directly.
   It was the source of the collection pipeline port. New work should branch on
   top of the current draft stack, not edit Meteor's branch or the dirty main
@@ -126,13 +133,15 @@ The current layer does not yet:
 - run a green live Convex canary in this local environment
 - prove Agent-enabled collection quality on a full real benchmark
 - prove the collection runtime should replace Mastra as the default app runtime
+- enforce the planned per-dataset row commit cap, such as 100 rows/hour, on the
+  self-healing commit path
 
 ## Migration Sequence
 
 1. Branch from the top of the self-healing stack.
    - For new collection-runner or benchmark work, base on
-     `codex/collection-capability-diagnostics` unless that PR has been
-     superseded.
+     `codex/benchmark-self-healing-action-gate` unless that PR has been
+     superseded by a newer reviewed stack tip.
    - Do not edit `main`, the dirty local checkout, or
      `feat/data-collection-agent-v14` directly.
 
@@ -306,35 +315,49 @@ That is not a pass, but it is useful: it tells us the next benchmark should
 turn Agent on and measure whether browser/detail follow-up fixes the source
 evidence miss.
 
-Agent-enabled `mcp-docs-pages` evidence from the stack-handoff branch:
+Latest Agent-enabled `mcp-docs-pages` evidence from the provenance diagnostics
+branch, rescored with the rejected-candidate gate:
 
-- artifact: `benchmark-results/collection-agent-canary-mcp-20260523-001`
-- result: 3 rows, 12 evidence quotes, 10 source URLs, 3 Agent runs
-- cost: about `$0.053552`
-- status: failed, not blocked
-- score: factual accuracy `0.933`, entity coverage `1.0`, claim support `1.0`,
-  domain accuracy `0.667`
-- conclusion: Agent/browser follow-up runs successfully and improves claim
-  support, but source/domain evidence still misses. The next code target is
-  source coherence: keep each row's docs URL/evidence/source URLs aligned with
-  that entity's official docs domain instead of merging discovery/blog/course
-  evidence across vendors.
+- artifact: `benchmark-results/collection-agent-provenance-mcp-20260523-001`
+- result: 3 rows, 5 evidence quotes, 5 source URLs, 1 Agent run, 20 reported
+  Agent steps
+- cost: about `$0.307769`
+- score: factual accuracy `1.0`, entity coverage `1.0`, domain accuracy `1.0`,
+  claim support `1.0`
+- self-healing action: `candidate_rejected`
+- Playwright readiness: `not_ready`, with zero replayable browser steps
+- status after PR #60 rescore: failed with `failureCategory:
+  "capability_gate"`
+- conclusion: the collection Agent can collect useful rows for this prompt, but
+  the self-healing layer correctly refuses to treat a rejected diagnostic run as
+  a promotable cron recipe. TinyFish reported browser work happened, but the
+  exposed run payload still did not contain explicit replayable browser actions.
 
 ## Next Engineering Move
 
-Create a fresh branch from `codex/collection-capability-diagnostics` and fix
-source coherence before running the full benchmark:
+Create fresh branches from `codex/benchmark-self-healing-action-gate`. Do not
+edit `main`, Meteor's branch, or the dirty local checkout.
 
-1. Keep `COLLECTION_AGENT_ENABLE_AGENT=false` as the default.
-2. Add focused tests around record merge/source selection so a row does not gain
-   evidence for a populated field from another record unless the incoming row
-   value supports the existing value.
-3. Tighten docs/official-source selection so docs prompts prefer docs/developers
-   pages over blogs, news, courses, directories, or third-party discovery pages.
-4. Re-run the Agent-enabled `mcp-docs-pages` canary.
-5. If domain accuracy reaches `1.0`, run the 4-prompt focused benchmark from
-   PR #45.
-6. Run the full prompt pack only after the focused benchmark is not obviously
+1. Ask Meteor's migrated collection agent to emit explicit action traces.
+   - Preferred fields are `browser_actions` or `agent_browser_actions`.
+   - Each action should include at least URL or selector/target text plus safe,
+     redacted value descriptions for form inputs.
+   - Do not build a Playwright compiler against search/fetch-only traces.
+2. Add a small self-healing commit-path row cap when commit safety becomes the
+   immediate risk.
+   - Start with a configurable per-dataset cap such as 100 committed rows/hour.
+   - Enforce it before `rowWriter.replaceRows(...)` on commit mode.
+   - Keep dry-run and benchmark lanes unaffected.
+   - Gate it with unit tests for allowed commit, blocked commit, and no runtime
+     execution when the cap is already exhausted.
+3. Re-run the Agent-enabled `mcp-docs-pages` canary with:
+   - `COLLECTION_AGENT_ENABLE_AGENT=true`
+   - `--require-playwright-ready`
+   - PR #60's rejected-candidate gate
+4. Only after that canary produces `selfHealingAction` other than
+   `candidate_rejected` and `playwrightCandidateStatus: "ready"`, start a
+   Playwright compiler branch.
+5. Run the full prompt pack only after the focused canaries are not obviously
    broken.
 
 When testing the real app or CLI path, set:
