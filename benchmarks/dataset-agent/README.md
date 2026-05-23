@@ -115,8 +115,8 @@ Mapping is mechanical:
 
 When both action arrays are present in the same report scope, BigSet preserves
 array order by appending `browser_actions` first and `agent_browser_actions`
-second. This is an ingestion contract for a future Meteor/Mengzhe producer or
-Agent canary; it does not mean the current vendored pipeline already emits
+second. This is an ingestion contract for a future collection producer or Agent
+canary; it does not mean the current vendored pipeline already emits
 browser actions.
 
 When TinyFish Agent result JSON includes explicit `browser_actions` or

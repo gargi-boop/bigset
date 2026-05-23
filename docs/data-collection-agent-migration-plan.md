@@ -18,7 +18,8 @@ the collection pipeline is migrated into BigSet.
   a runner module from `POPULATE_COLLECTION_RUNNER_MODULE`.
 - PR #41 adds a `collection-self-heal` benchmark lane that wraps the collection
   runtime inside `SelfHealingPopulateRecipeService`. This is the benchmark
-  socket Meteor can use once the real collection runner is available.
+  socket a collection-runtime producer can use once the real collection runner
+  is available.
 - PR #43 ports the real vendored collection pipeline behind
   `runCollectionPopulatePipeline(input)`, so the collection benchmark lane now
   runs the BigSet-wrapped collection runner instead of a fake injected runner.
@@ -39,12 +40,11 @@ the collection pipeline is migrated into BigSet.
   `failureCategory: "capability_gate"`, even when diagnostic rows match answer
   keys.
 - This branch adds a commit-path row cap for self-healing writes. Commit mode
-  defaults to 100 committed rows/hour per dataset and can be overridden with
-  `POPULATE_COMMIT_ROW_LIMIT_PER_HOUR` or
-  `--commit-row-limit-per-hour`.
+  defaults to a configurable safety throttle and can be overridden with
+  `POPULATE_COMMIT_ROW_LIMIT_PER_HOUR` or `--commit-row-limit-per-hour`.
 - `feat/data-collection-agent-v14` is no longer the branch to build on directly.
   It was the source of the collection pipeline port. New work should branch on
-  top of the current draft stack, not edit Meteor's branch or the dirty main
+  top of the current draft stack, not edit the external collection branch or the dirty main
   checkout.
 
 ## Target Shape
@@ -259,9 +259,10 @@ Before any merge:
 - commit-mode row caps block Convex writes before the cap is exceeded and skip
   runtime work when the cap is already exhausted
 
-## Meteor Handoff Shape
+## Collection Runtime Handoff Shape
 
-Meteor does not need to rebuild the self-healing wrapper. The socket is now:
+The collection-runtime owner does not need to rebuild the self-healing wrapper.
+The socket is now:
 
 ```text
 runCollectionPopulatePipeline(CollectionPopulatePipelineInput)
@@ -274,7 +275,7 @@ collection runner ignores `recipeInstructions`, repaired recipes cannot change
 future behavior. If it ignores `requiredColumns` or benchmark metadata, the
 benchmark can stop measuring the same task.
 
-For the Playwright handoff, Meteor can optionally emit `browser_actions` and
+For the Playwright handoff, the collection runtime can optionally emit `browser_actions` and
 `agent_browser_actions` in the collection report. BigSet preserves each array's
 order and appends `browser_actions` before `agent_browser_actions` when both are
 present in the same report scope. This is a wrapper ingestion contract only; the
@@ -346,9 +347,9 @@ branch, rescored with the rejected-candidate gate:
 ## Next Engineering Move
 
 Create fresh branches from the current rollup/producer stack. Do not edit
-`main`, Meteor's branch, or the dirty local checkout.
+`main`, the external collection branch, or the dirty local checkout.
 
-1. Ask Meteor's migrated collection agent to emit explicit action traces.
+1. Ask the migrated collection agent to emit explicit action traces.
    - Preferred fields are `browser_actions` or `agent_browser_actions`.
    - Each action should include at least URL or selector/target text plus safe,
      redacted value descriptions for form inputs.
@@ -370,7 +371,7 @@ When testing the real app or CLI path, set:
 POPULATE_AGENT_RUNTIME=collection
 POPULATE_COLLECTION_RUNNER_MODULE=./backend/src/pipeline/collection-agent-runner.ts
 COLLECTION_AGENT_PIPELINE_MODULE=./backend/BigSet_Data_Collection_Agent/src/orchestrator/pipeline.ts
-POPULATE_COMMIT_ROW_LIMIT_PER_HOUR=100
+POPULATE_COMMIT_ROW_LIMIT_PER_HOUR=1000
 ```
 
 The BigSet runner keeps TinyFish Agent/browser calls disabled unless

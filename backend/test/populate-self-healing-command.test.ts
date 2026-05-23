@@ -5,6 +5,7 @@ import type { DatasetContext } from "../src/pipeline/populate.js";
 import type { PopulateRecipeRuntime } from "../src/pipeline/populate-self-healing.js";
 import type { RunSelfHealingPopulateResult } from "../src/pipeline/populate-self-healing-runner.js";
 import {
+  DEFAULT_COMMIT_ROW_LIMIT_PER_HOUR,
   parsePopulateSelfHealingCliArgs,
   runPopulateSelfHealingCli,
 } from "../src/pipeline/populate-self-healing-command.js";
@@ -255,7 +256,10 @@ test("self-healing CLI dataset-id commit loads context and creates writer", asyn
       assert.equal(input.store, undefined);
       assert.equal(input.recipeStoreDirectory, ".bigset/populate-recipes");
       assert.ok(input.rowWriter);
-      assert.equal(input.commitRowLimit?.maxRowsPerWindow, 100);
+      assert.equal(
+        input.commitRowLimit?.maxRowsPerWindow,
+        DEFAULT_COMMIT_ROW_LIMIT_PER_HOUR
+      );
       assert.equal(input.commitRowLimit?.windowMs, 60 * 60 * 1_000);
       return successfulResult(input.context.datasetId);
     },

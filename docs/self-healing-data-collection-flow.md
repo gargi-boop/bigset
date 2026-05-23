@@ -1,10 +1,10 @@
-# Meeting Notes 6 Agent System Map
+# Self-Healing Data Collection Flow
 
-Source: summarized from latest local team-sync notes. This file is intentionally public-safe: no transcript paste, no private links, no secrets.
+Purpose: public-safe architecture note for the BigSet data collection integration. No transcript paste, no private links, no secrets.
 
 ## Short Version
 
-Team direction changed from "Mastra versus Mengzhe/data-collection-agent benchmark fight" to "move the useful data-collection-agent ideas into the Mastra app path."
+Team direction changed from "compare the standalone collection pipeline against Mastra" to "move the useful collection-pipeline ideas into the Mastra app path."
 
 Goal: one app-integrated system where a user can type a dataset request in BigSet, create the table, populate rows from real sources, reject bad output, and eventually rerun the working browser steps cheaply.
 
@@ -34,11 +34,11 @@ Plain English version:
 ## Action Items
 
 1. Mastra owner should open a PR for the updated whole collection system by tomorrow so the team can check it out, run it, and test prompt-to-dataset in the BigSet frontend.
-2. Mastra owner should send a simple detailed flowchart ASAP showing how the agent system works and where Edward's self-healing / Playwright work plugs in.
+2. Mastra owner should send a simple detailed flowchart ASAP showing how the agent system works and where the self-healing / Playwright work plugs in.
 3. Mastra owner should raise extraction beyond the tiny demo target and test whether the current pipeline can fill many useful rows without treating 100 as a product limit.
 4. Mastra owner should improve the repair loop so it searches for missing fields/cells instead of blindly rerunning the same full cycle.
 5. Mastra owner should add a browser/Playwright/TinyFish Agent stage for sources that normal fetch cannot read well.
-6. Edward should explain the current self-healing and Playwright layer in a quick sync, especially whether it should be separate or part of the core pipeline.
+6. Self-healing owner should explain the current self-healing and Playwright layer in a quick sync, especially whether it should be separate or part of the core pipeline.
 7. Team should confirm `make dev` setup and required env files at root, frontend, and backend.
 8. Everyone should ask for help early if blocked. Weekend goal is a working integrated flow, not isolated demos.
 
@@ -102,7 +102,7 @@ Mastra: app-integrated agent framework. This is the path the team wants to use a
 
 Data collection workflow: the whole process that searches, fetches, uses browser navigation when needed, and fills table rows.
 
-Mengzhe/data-collection-agent: stronger older pipeline. Current plan is not to run it as a separate product forever; current plan is to move its good ideas into Mastra.
+Standalone data-collection-agent: stronger older pipeline. Current plan is not to run it as a separate product forever; current plan is to move its good ideas into Mastra.
 
 Search/prioritize agent: first agent. It finds possible sources and chooses which sources are worth fetching.
 
@@ -160,7 +160,7 @@ Not done yet:
 
 ## How To Use This In Codex Sidebar
 
-Open this file from the Changes/sidebar: `docs/meeting-notes-6-agent-system-map.md`.
+Open this file from the Changes/sidebar: `docs/self-healing-data-collection-flow.md`.
 
 To ask questions, select any line or block and ask Codex something like:
 

@@ -16,6 +16,8 @@ import {
   type CreatePopulateRecipeRuntimeInput,
 } from "./populate-runtime-selection.js";
 
+export const DEFAULT_COMMIT_ROW_LIMIT_PER_HOUR = 1000;
+
 export interface PopulateSelfHealingCliOptions {
   datasetId?: string;
   contextPath?: string;
@@ -267,7 +269,7 @@ function commitRowLimitPerHour(input: {
     return input.optionValue;
   }
   if (input.envValue === undefined || input.envValue === "") {
-    return 100;
+    return DEFAULT_COMMIT_ROW_LIMIT_PER_HOUR;
   }
   const parsed = Number(input.envValue);
   if (!Number.isInteger(parsed) || parsed <= 0) {

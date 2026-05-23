@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { createBigSetServer } from "../src/server.js";
+import { DEFAULT_COMMIT_ROW_LIMIT_PER_HOUR } from "../src/pipeline/populate-self-healing-command.js";
 import type { DatasetContext } from "../src/pipeline/populate.js";
 import type { PopulateRecipeRuntime } from "../src/pipeline/populate-self-healing.js";
 import type { RunSelfHealingPopulateResult } from "../src/pipeline/populate-self-healing-runner.js";
@@ -55,7 +56,10 @@ test("POST /populate passes selected runtime into self-healing runner", async ()
       assert.equal(input.shouldCommitRows, true);
       assert.equal(input.recipeStoreDirectory, ".bigset/populate-recipes");
       assert.ok(input.rowWriter);
-      assert.equal(input.commitRowLimit?.maxRowsPerWindow, 100);
+      assert.equal(
+        input.commitRowLimit?.maxRowsPerWindow,
+        DEFAULT_COMMIT_ROW_LIMIT_PER_HOUR
+      );
       assert.equal(input.commitRowLimit?.windowMs, 60 * 60 * 1_000);
       return successfulResult(input.context.datasetId);
     },

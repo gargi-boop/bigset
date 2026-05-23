@@ -31,8 +31,8 @@ Starts on [localhost:3501](http://localhost:3501).
 
 ## Self-Healing Commit Cap
 
-`populate:self-heal --commit` and `POST /populate` cap committed rows per
-dataset at 100 rows/hour by default. Override with
+`populate:self-heal --commit` and `POST /populate` use a configurable
+per-dataset hourly safety throttle before writing rows. Override with
 `POPULATE_COMMIT_ROW_LIMIT_PER_HOUR` or CLI
 `--commit-row-limit-per-hour`.
 

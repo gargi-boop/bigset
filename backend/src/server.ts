@@ -17,6 +17,7 @@ import {
   createPopulateRecipeRuntime,
   type CreatePopulateRecipeRuntimeInput,
 } from "./pipeline/populate-runtime-selection.js";
+import { DEFAULT_COMMIT_ROW_LIMIT_PER_HOUR } from "./pipeline/populate-self-healing-command.js";
 
 export interface BigSetServerEnv {
   CLIENT_ORIGIN: string;
@@ -193,7 +194,7 @@ function responseSafePopulateResult(
 
 function commitRowLimitPerHour(env: BigSetServerEnv): number {
   if (!env.POPULATE_COMMIT_ROW_LIMIT_PER_HOUR) {
-    return 100;
+    return DEFAULT_COMMIT_ROW_LIMIT_PER_HOUR;
   }
   const parsed = Number(env.POPULATE_COMMIT_ROW_LIMIT_PER_HOUR);
   if (!Number.isInteger(parsed) || parsed <= 0) {
