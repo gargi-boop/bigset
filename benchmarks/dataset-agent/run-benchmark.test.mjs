@@ -13,6 +13,7 @@ import {
   playwrightReadinessGateReason,
   rescoreBenchmarkRun,
   scoreBenchmarkRows,
+  selfHealingActionGateReason,
 } from "./run-benchmark.mjs";
 import { selfHealingDiagnosticsFromTick } from "./adapters/self-healing-output.mjs";
 
@@ -295,6 +296,66 @@ test("Playwright readiness gate does not override infrastructure blockers", () =
   }), "infra");
 });
 
+test("self-healing rejection gate fails otherwise passing benchmark output", () => {
+  const capabilityGateReason = selfHealingActionGateReason({
+    diagnostics: {
+      selfHealingAction: "candidate_rejected",
+    },
+  });
+  const answerKeyScore = { passed: true, failureCategory: undefined };
+  const status = benchmarkStatusForOutcome({
+    execution: { exitCode: 0 },
+    parsedPayload: { rows: passingRows() },
+    answerKeyScore,
+    infraBlockerReason: null,
+    capabilityGateReason,
+  });
+
+  assert.equal(status, "failed");
+  assert.match(capabilityGateReason, /candidate recipe was rejected/i);
+  assert.equal(failureCategoryForOutcome({
+    status,
+    infraBlockerReason: null,
+    capabilityGateReason,
+    answerKeyScore,
+  }), "capability_gate");
+  assert.equal(failureReason({
+    execution: { exitCode: 0, timedOut: false },
+    parsedPayload: { rows: passingRows() },
+    validation: passingValidation,
+    answerKeyScore,
+    infraBlockerReason: null,
+    capabilityGateReason,
+    minRequiredCompleteness: 0.75,
+  }), capabilityGateReason);
+});
+
+test("self-healing rejection gate does not override infrastructure blockers", () => {
+  const infraBlockerReason = "Infrastructure/auth/credits blocker.";
+  const capabilityGateReason = null;
+  const answerKeyScore = { passed: true, failureCategory: undefined };
+  const status = benchmarkStatusForOutcome({
+    execution: { exitCode: 0 },
+    parsedPayload: {
+      rows: passingRows(),
+      diagnostics: {
+        selfHealingAction: "candidate_rejected",
+      },
+    },
+    answerKeyScore,
+    infraBlockerReason,
+    capabilityGateReason,
+  });
+
+  assert.equal(status, "blocked");
+  assert.equal(failureCategoryForOutcome({
+    status,
+    infraBlockerReason,
+    capabilityGateReason,
+    answerKeyScore,
+  }), "infra");
+});
+
 test("rescore applies Playwright readiness gate semantics", async () => {
   const runDirectory = await mkdtemp(join(tmpdir(), "bigset-benchmark-rescore-"));
   const artifactDirectory = join(runDirectory, "collection-self-heal", "01-gate-prompt");
@@ -350,6 +411,65 @@ test("rescore applies Playwright readiness gate semantics", async () => {
   assert.equal(rescored.laneResults[0].failureCategory, "capability_gate");
   assert.match(rescored.laneResults[0].errorMessage, /no actionable browser steps/i);
   assert.equal(rescored.laneResults[0].playwrightCandidateStatus, "not_ready");
+});
+
+test("rescore applies self-healing rejection gate semantics", async () => {
+  const runDirectory = await mkdtemp(join(tmpdir(), "bigset-benchmark-rescore-"));
+  const artifactDirectory = join(runDirectory, "collection-self-heal", "01-rejected-prompt");
+  await mkdir(artifactDirectory, { recursive: true });
+
+  const parsedPayload = {
+    rows: passingRows(),
+    validationIssues: [],
+    diagnostics: {
+      selfHealingAction: "candidate_rejected",
+    },
+  };
+  await writeFile(
+    join(runDirectory, "summary.json"),
+    JSON.stringify({
+      laneResults: [{
+        system: "collection-self-heal",
+        promptId: "rejected-prompt",
+        promptQuality: "good",
+        artifactDirectory,
+        exitCode: 0,
+        timedOut: false,
+      }],
+    })
+  );
+  await writeFile(
+    join(artifactDirectory, "parsed-output.json"),
+    JSON.stringify(parsedPayload)
+  );
+  await writeFile(join(artifactDirectory, "stdout.txt"), JSON.stringify(parsedPayload));
+  await writeFile(join(artifactDirectory, "stderr.txt"), "");
+
+  const rescored = await rescoreBenchmarkRun({
+    runDirectory,
+    prompts: [{
+      id: "rejected-prompt",
+      quality: "good",
+      persona: "developer",
+      prompt: "Find official docs.",
+      expectedStress: "Self-healing rejection gate.",
+      requiredColumns: ["entity_name", "source_url"],
+    }],
+    config: {
+      promptIds: null,
+      minRequiredCompleteness: 0.75,
+      minFactualAccuracy: 0.75,
+      requirePlaywrightReady: false,
+      inputUsdPer1M: 0.05,
+      outputUsdPer1M: 0.5,
+      tinyFishAgentStepUsd: 0.015,
+    },
+  });
+
+  assert.equal(rescored.laneResults[0].status, "failed");
+  assert.equal(rescored.laneResults[0].failureCategory, "capability_gate");
+  assert.match(rescored.laneResults[0].errorMessage, /candidate recipe was rejected/i);
+  assert.equal(rescored.laneResults[0].selfHealingAction, "candidate_rejected");
 });
 
 function passingRows() {

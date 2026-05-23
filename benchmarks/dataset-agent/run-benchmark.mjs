@@ -569,10 +569,13 @@ async function runSystemPrompt(input) {
   });
   const capabilityGateReason = infraBlockerReason
     ? null
-    : playwrightReadinessGateReason({
-      diagnostics: normalized.diagnostics,
-      requirePlaywrightReady: input.config.requirePlaywrightReady,
-    });
+    : firstString([
+      selfHealingActionGateReason({ diagnostics: normalized.diagnostics }),
+      playwrightReadinessGateReason({
+        diagnostics: normalized.diagnostics,
+        requirePlaywrightReady: input.config.requirePlaywrightReady,
+      }),
+    ]);
   const status = benchmarkStatusForOutcome({
     execution,
     parsedPayload,
@@ -1016,6 +1019,13 @@ export function playwrightReadinessGateReason({
   return null;
 }
 
+export function selfHealingActionGateReason({ diagnostics }) {
+  if (diagnostics?.selfHealingAction !== "candidate_rejected") {
+    return null;
+  }
+  return "Self-healing gate failed: candidate recipe was rejected; rows came from a diagnostic run, not a promoted recipe.";
+}
+
 export function benchmarkStatusForOutcome({
   execution,
   parsedPayload,
@@ -1171,10 +1181,13 @@ export async function rescoreBenchmarkRun({ runDirectory, prompts, config }) {
     });
     const capabilityGateReason = infraBlockerReason
       ? null
-      : playwrightReadinessGateReason({
-        diagnostics: normalized.diagnostics,
-        requirePlaywrightReady: config.requirePlaywrightReady,
-      });
+      : firstString([
+        selfHealingActionGateReason({ diagnostics: normalized.diagnostics }),
+        playwrightReadinessGateReason({
+          diagnostics: normalized.diagnostics,
+          requirePlaywrightReady: config.requirePlaywrightReady,
+        }),
+      ]);
     const status = benchmarkStatusForOutcome({
       execution,
       parsedPayload: usablePayload,
@@ -1830,6 +1843,10 @@ function stringArrayValue(value) {
     return [value];
   }
   return [];
+}
+
+function firstString(values) {
+  return values.find((value) => typeof value === "string" && value.length > 0) ?? null;
 }
 
 function singleStringArray(value) {

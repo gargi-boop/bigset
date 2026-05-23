@@ -146,6 +146,11 @@ without committing raw run folders:
 Agent canary actually emitted browser actions before starting a Playwright
 compiler.
 
+If `selfHealingAction` is `candidate_rejected`, the benchmark marks the lane as
+`failureCategory: "capability_gate"` even when the diagnostic rows score well.
+Rejected candidates are useful for debugging, but they are not promotable cron
+recipes.
+
 Agent canaries also preserve safe provenance from the TinyFish run payload:
 reported step count, whether a streaming URL existed, and top-level result
 keys. Raw `streaming_url` values are never persisted. If Agent returns rows but

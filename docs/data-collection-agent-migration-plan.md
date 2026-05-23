@@ -201,6 +201,9 @@ The current layer does not yet:
      `has_streaming_url`, and `result_keys`) when readiness fails; these fields
      prove browser work happened without persisting raw streaming URLs or
      pretending selectors/clicks exist
+   - treat `selfHealingAction: "candidate_rejected"` as a capability failure
+     even if diagnostic rows score well; rejected rows are debug output, not a
+     promotable self-healing recipe
    - full benchmark only after the 2-prompt run is not obviously broken
    - live `--dataset-id` dry-run only after Convex/env prerequisites are ready
    - `--commit` only on a throwaway dataset first
