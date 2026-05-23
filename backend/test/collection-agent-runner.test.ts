@@ -130,6 +130,41 @@ test("collection agent runner maps explicit browser action reports into process 
   }
 });
 
+test("collection agent runner surfaces Agent provenance when actions are missing", async () => {
+  const previousEnv = snapshotEnv([
+    "AGENT_POLL_TIMEOUT_MS",
+    "COLLECTION_AGENT_ENABLE_AGENT",
+    "COLLECTION_AGENT_PIPELINE_MODULE",
+    "COLLECTION_AGENT_POLL_TIMEOUT_MS",
+  ]);
+  delete process.env.AGENT_POLL_TIMEOUT_MS;
+  process.env.COLLECTION_AGENT_ENABLE_AGENT = "true";
+  delete process.env.COLLECTION_AGENT_POLL_TIMEOUT_MS;
+  process.env.COLLECTION_AGENT_PIPELINE_MODULE = fakeCollectionPipelineModuleUrl({
+    expectedCalls: [{ agentEnabled: true, pollTimeoutMs: 480_000 }],
+    agentReportedStepCount: 4,
+    agentRunsWithStreamingUrl: 1,
+    agentRunsWithExplicitBrowserActions: 0,
+  });
+  try {
+    const result = await runCollectionPopulatePipeline(collectionPipelineInput());
+
+    assert.equal(result.metrics.agentSteps, 4);
+    assert.equal(
+      result.debug?.processTrace.notes.some((note) =>
+        /reported 4 step\(s\), but emitted no explicit browser actions/i.test(note)
+      ),
+      true
+    );
+    assert.equal(
+      playwrightCandidateReadinessForRun({ result }).status,
+      "not_ready"
+    );
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
 test("collection agent runner requires explicit Agent opt-in and caps poll timeout per warm process call", async () => {
   const previousEnv = snapshotEnv([
     "AGENT_POLL_TIMEOUT_MS",
@@ -256,6 +291,9 @@ function fakeCollectionPipelineModuleUrl(input: {
   sources?: unknown;
   browserActions?: unknown;
   agentBrowserActions?: unknown;
+  agentReportedStepCount?: number;
+  agentRunsWithStreamingUrl?: number;
+  agentRunsWithExplicitBrowserActions?: number;
 }): string {
   const source = `
     const moduleLoadPollTimeoutMs = process.env.AGENT_POLL_TIMEOUT_MS ?? null;
@@ -311,6 +349,9 @@ function fakeCollectionPipelineModuleUrl(input: {
               agent_dispatched: 1,
               agent_succeeded: 1,
               agent_failed: 0,
+              agent_reported_step_count: ${JSON.stringify(input.agentReportedStepCount)},
+              agent_runs_with_streaming_url: ${JSON.stringify(input.agentRunsWithStreamingUrl)},
+              agent_runs_with_explicit_browser_actions: ${JSON.stringify(input.agentRunsWithExplicitBrowserActions)},
             },
           },
           initial: {
@@ -327,6 +368,9 @@ function fakeCollectionPipelineModuleUrl(input: {
               agent_dispatched: 1,
               agent_succeeded: 1,
               agent_failed: 0,
+              agent_reported_step_count: ${JSON.stringify(input.agentReportedStepCount)},
+              agent_runs_with_streaming_url: ${JSON.stringify(input.agentRunsWithStreamingUrl)},
+              agent_runs_with_explicit_browser_actions: ${JSON.stringify(input.agentRunsWithExplicitBrowserActions)},
             },
           },
           repair: {

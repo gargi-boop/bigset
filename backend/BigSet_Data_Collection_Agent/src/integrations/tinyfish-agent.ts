@@ -25,6 +25,9 @@ export interface TinyfishAgentRunResult {
   status: string;
   result: Record<string, unknown> | null;
   error: string | null;
+  agent_step_count: number | null;
+  has_streaming_url: boolean;
+  result_keys: string[];
 }
 
 export interface QueueTinyfishAgentResult {
@@ -41,16 +44,23 @@ export interface TinyfishAgentRunOptions {
   pollTimeoutMs?: number;
 }
 
-function runToResult(run: Run): TinyfishAgentRunResult {
+export function tinyfishAgentRunResultFromRun(run: Run): TinyfishAgentRunResult {
   const errorMessage =
     run.error?.message ??
     (run.status === RunStatus.FAILED ? "Agent run failed" : null);
+  const result = (run.result as Record<string, unknown> | null) ?? null;
 
   return {
     run_id: run.run_id,
     status: run.status,
-    result: (run.result as Record<string, unknown> | null) ?? null,
+    result,
     error: errorMessage,
+    agent_step_count: typeof run.num_of_steps === "number"
+      ? run.num_of_steps
+      : null,
+    has_streaming_url: typeof run.streaming_url === "string" &&
+      run.streaming_url.length > 0,
+    result_keys: result ? Object.keys(result).sort() : [],
   };
 }
 
@@ -137,7 +147,7 @@ export async function pollTinyfishAgentUntilDone(
     lastStatus = run.status;
 
     if (TERMINAL_STATUSES.has(run.status)) {
-      return runToResult(run);
+      return tinyfishAgentRunResultFromRun(run);
     }
 
     if (Date.now() - startedAt >= pollTimeoutMs) {
@@ -146,7 +156,7 @@ export async function pollTinyfishAgentUntilDone(
       try {
         const finalRun = await getClient().runs.get(runId);
         if (TERMINAL_STATUSES.has(finalRun.status)) {
-          const result = runToResult(finalRun);
+          const result = tinyfishAgentRunResultFromRun(finalRun);
           if (finalRun.status === RunStatus.CANCELLED) {
             return {
               ...result,
@@ -166,6 +176,9 @@ export async function pollTinyfishAgentUntilDone(
         status: "TIMEOUT",
         result: null,
         error: `Agent run timed out after ${pollTimeoutMs}ms (last status: ${lastStatus}); cancel requested`,
+        agent_step_count: null,
+        has_streaming_url: false,
+        result_keys: [],
       };
     }
 
@@ -188,6 +201,9 @@ export async function runTinyfishAgent(
       status: RunStatus.FAILED,
       result: null,
       error: queued.error ?? "Failed to queue agent run",
+      agent_step_count: null,
+      has_streaming_url: false,
+      result_keys: [],
     };
   }
   return pollTinyfishAgentUntilDone(queued.run_id, options);
@@ -222,6 +238,9 @@ export async function runTinyfishAgentsBatch(
         status: RunStatus.FAILED,
         result: null,
         error: item.error ?? "Failed to queue agent run",
+        agent_step_count: null,
+        has_streaming_url: false,
+        result_keys: [],
       };
       continue;
     }

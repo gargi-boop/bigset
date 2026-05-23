@@ -95,6 +95,9 @@ interface CollectionPhaseStats {
     agent_dispatched?: number;
     agent_succeeded?: number;
     agent_failed?: number;
+    agent_reported_step_count?: number;
+    agent_runs_with_streaming_url?: number;
+    agent_runs_with_explicit_browser_actions?: number;
   };
 }
 
@@ -393,6 +396,15 @@ function collectionDebugNotes(report: CollectionPipelineResult["report"]): strin
   if (report.repair?.loops && report.repair.loops.length > 0) {
     notes.push(`collection repair loops=${report.repair.loops.length}`);
   }
+  const triage = report.stats?.triage ?? report.initial?.triage;
+  if (
+    numberValue(triage?.agent_reported_step_count) > 0 &&
+    numberValue(triage?.agent_runs_with_explicit_browser_actions) === 0
+  ) {
+    notes.push(
+      `collection Agent reported ${numberValue(triage?.agent_reported_step_count)} step(s), but emitted no explicit browser actions for Playwright replay`
+    );
+  }
   return notes;
 }
 
@@ -608,17 +620,23 @@ function metricsFromReport(report: CollectionPipelineResult["report"]) {
   const agentDispatched =
     numberValue(initialTriage.agent_dispatched) +
       numberValue(repairTriage.agent_dispatched);
+  const reportedAgentSteps =
+    numberValue(initialTriage.agent_reported_step_count) +
+      numberValue(repairTriage.agent_reported_step_count);
+  const fallbackAgentSteps =
+    numberValue(initialTriage.agent_succeeded) +
+      numberValue(initialTriage.agent_failed) +
+      numberValue(repairTriage.agent_succeeded) +
+      numberValue(repairTriage.agent_failed);
 
   return {
     searchCalls: numberValue(stats.search_queries_executed),
     fetchCalls: numberValue(stats.pages_fetched),
     browserCalls: agentDispatched,
     agentRuns: agentDispatched,
-    agentSteps:
-      numberValue(initialTriage.agent_succeeded) +
-      numberValue(initialTriage.agent_failed) +
-      numberValue(repairTriage.agent_succeeded) +
-      numberValue(repairTriage.agent_failed),
+    agentSteps: reportedAgentSteps > 0
+      ? reportedAgentSteps
+      : fallbackAgentSteps,
   };
 }
 

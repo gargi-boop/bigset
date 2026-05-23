@@ -126,6 +126,10 @@ export const agentRunRecordSchema = z.object({
   goal: z.string(),
   records_extracted: z.number(),
   error: z.string().optional(),
+  agent_step_count: z.number().nullable().optional(),
+  has_streaming_url: z.boolean().optional(),
+  result_keys: z.array(z.string()).optional(),
+  browser_action_diagnostic: z.string().optional(),
   browser_actions: z.array(browserActionReportSchema).optional(),
 });
 
@@ -143,6 +147,9 @@ export const triageSummarySchema = z.object({
   skipped: z.number(),
   records_from_extract: z.number(),
   records_from_agent: z.number(),
+  agent_reported_step_count: z.number().optional(),
+  agent_runs_with_streaming_url: z.number().optional(),
+  agent_runs_with_explicit_browser_actions: z.number().optional(),
 });
 
 export type TriageSummary = z.infer<typeof triageSummarySchema>;

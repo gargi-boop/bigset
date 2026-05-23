@@ -71,8 +71,16 @@ test("Agent run records and run reports persist browser action arrays", () => {
     agent_status: "COMPLETED",
     goal: "Submit the form and extract the result.",
     records_extracted: 1,
+    agent_step_count: 3,
+    has_streaming_url: true,
+    result_keys: ["records"],
+    browser_action_diagnostic: "Agent completed and returned rows, but polled run payload exposed no explicit browser actions.",
     browser_actions: browserActions,
   });
+
+  assert.equal(agentRun.agent_step_count, 3);
+  assert.equal(agentRun.has_streaming_url, true);
+  assert.deepEqual(agentRun.result_keys, ["records"]);
 
   assert.deepEqual(
     explicitBrowserActionsFromAgentRuns([agentRun]),
@@ -154,5 +162,23 @@ function phaseStats() {
     pages_fetched: 1,
     pages_failed: 0,
     raw_records_extracted: 1,
+    triage: {
+      pages_triaged: 1,
+      by_status: {
+        requires_form_submission: 1,
+      },
+      extract_now: 0,
+      agent_candidates: 1,
+      agent_dispatched: 1,
+      agent_deferred: 0,
+      agent_succeeded: 1,
+      agent_failed: 0,
+      skipped: 0,
+      records_from_extract: 0,
+      records_from_agent: 1,
+      agent_reported_step_count: 3,
+      agent_runs_with_streaming_url: 1,
+      agent_runs_with_explicit_browser_actions: 1,
+    },
   };
 }

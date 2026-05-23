@@ -5,6 +5,7 @@ import { triagePage } from "../agents/source-triage.js";
 import { derivePromptSourcePolicy } from "../agents/source-policy.js";
 import { config } from "../config.js";
 import { runTinyfishAgentsBatch } from "../integrations/tinyfish-agent.js";
+import type { TinyfishAgentRunResult } from "../integrations/tinyfish-agent.js";
 import type { WorkflowMemory } from "../memory/index.js";
 import { getPrimaryKeyValue } from "../merge/records.js";
 import {
@@ -56,6 +57,55 @@ function emptySummary(): TriageSummary {
     skipped: 0,
     records_from_extract: 0,
     records_from_agent: 0,
+    agent_reported_step_count: 0,
+    agent_runs_with_streaming_url: 0,
+    agent_runs_with_explicit_browser_actions: 0,
+  };
+}
+
+function recordAgentRunProvenance(
+  summary: TriageSummary,
+  run: TinyfishAgentRunResult,
+  browserActionCount: number,
+): void {
+  summary.agent_reported_step_count =
+    (summary.agent_reported_step_count ?? 0) +
+      (run.agent_step_count ?? 0);
+  if (run.has_streaming_url) {
+    summary.agent_runs_with_streaming_url =
+      (summary.agent_runs_with_streaming_url ?? 0) + 1;
+  }
+  if (browserActionCount > 0) {
+    summary.agent_runs_with_explicit_browser_actions =
+      (summary.agent_runs_with_explicit_browser_actions ?? 0) + 1;
+  }
+}
+
+function agentRunProvenanceFields(input: {
+  run: TinyfishAgentRunResult;
+  recordsExtracted: number;
+  browserActionCount: number;
+}): Pick<
+  AgentRunRecord,
+  | "agent_step_count"
+  | "has_streaming_url"
+  | "result_keys"
+  | "browser_action_diagnostic"
+> {
+  const hasReportedBrowserWork = (input.run.agent_step_count ?? 0) > 0;
+  const missingExplicitBrowserActions =
+    hasReportedBrowserWork && input.browserActionCount === 0;
+  const browserActionDiagnostic = missingExplicitBrowserActions
+    ? input.recordsExtracted > 0
+      ? "Agent completed and returned rows, but polled run payload exposed no explicit browser actions."
+      : "Agent completed with reported browser work, but polled run payload exposed no explicit browser actions."
+    : undefined;
+
+  return {
+    agent_step_count: input.run.agent_step_count,
+    has_streaming_url: input.run.has_streaming_url,
+    result_keys: input.run.result_keys,
+    browser_action_diagnostic: browserActionDiagnostic,
   };
 }
 
@@ -392,6 +442,7 @@ export async function processFetchedPages(options: {
         const pageUrl = job.pageUrl;
 
         if (run.error || !run.result) {
+          recordAgentRunProvenance(summary, run, 0);
           summary.agent_failed += 1;
           agentRuns.push({
             url: pageUrl,
@@ -401,6 +452,11 @@ export async function processFetchedPages(options: {
             goal: job.goal,
             records_extracted: 0,
             error: run.error ?? "No result returned",
+            ...agentRunProvenanceFields({
+              run,
+              recordsExtracted: 0,
+              browserActionCount: 0,
+            }),
           });
           options.log(
             options.label,
@@ -413,6 +469,7 @@ export async function processFetchedPages(options: {
           agentResult: run.result,
           pageUrl,
         });
+        recordAgentRunProvenance(summary, run, browserActions.length);
 
         try {
           const agentRecords = await extractFromAgentResult({
@@ -438,6 +495,11 @@ export async function processFetchedPages(options: {
             agent_status: run.status,
             goal: job.goal,
             records_extracted: agentRecords.length,
+            ...agentRunProvenanceFields({
+              run,
+              recordsExtracted: agentRecords.length,
+              browserActionCount: browserActions.length,
+            }),
             browser_actions: browserActions.length > 0
               ? browserActions
               : undefined,
@@ -459,6 +521,11 @@ export async function processFetchedPages(options: {
             goal: job.goal,
             records_extracted: 0,
             error: msg,
+            ...agentRunProvenanceFields({
+              run,
+              recordsExtracted: 0,
+              browserActionCount: browserActions.length,
+            }),
             browser_actions: browserActions.length > 0
               ? browserActions
               : undefined,

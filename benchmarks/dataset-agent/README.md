@@ -146,6 +146,13 @@ without committing raw run folders:
 Agent canary actually emitted browser actions before starting a Playwright
 compiler.
 
+Agent canaries also preserve safe provenance from the TinyFish run payload:
+reported step count, whether a streaming URL existed, and top-level result
+keys. Raw `streaming_url` values are never persisted. If Agent returns rows but
+the polled run payload has no explicit `browser_actions`, diagnostics include
+that distinction so `not_ready` means "no replayable action trace", not "the
+Agent did no browser work."
+
 For browser-action canaries, add `--require-playwright-ready` to make the
 benchmark fail with `failureCategory: "capability_gate"` unless the
 `playwright-candidate-readiness` artifact is `ready`. This gate uses the

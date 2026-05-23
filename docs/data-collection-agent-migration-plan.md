@@ -197,6 +197,10 @@ The current layer does not yet:
      provenance, not only row/evidence quality
    - run browser-action canaries with `--require-playwright-ready` so row
      quality cannot hide missing replayable browser-action provenance
+   - inspect Agent run provenance fields (`agent_step_count`,
+     `has_streaming_url`, and `result_keys`) when readiness fails; these fields
+     prove browser work happened without persisting raw streaming URLs or
+     pretending selectors/clicks exist
    - full benchmark only after the 2-prompt run is not obviously broken
    - live `--dataset-id` dry-run only after Convex/env prerequisites are ready
    - `--commit` only on a throwaway dataset first

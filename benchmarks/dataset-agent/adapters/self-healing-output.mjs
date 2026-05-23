@@ -27,6 +27,9 @@ function processTraceSummaryFromArtifacts(artifacts) {
   const searchQueries = Array.isArray(trace.searchQueries)
     ? trace.searchQueries
     : [];
+  const notes = Array.isArray(trace.notes)
+    ? trace.notes.filter((note) => typeof note === "string")
+    : [];
 
   return {
     runtime: typeof trace.runtime === "string" ? trace.runtime : "unknown",
@@ -40,6 +43,7 @@ function processTraceSummaryFromArtifacts(artifacts) {
     ].filter((url) => typeof url === "string" && /^https?:\/\//i.test(url))).size,
     searchQueryCount: searchQueries.length,
     fetchedUrlCount: fetchedUrls.length,
+    notes: notes.slice(0, 10),
   };
 }
 
