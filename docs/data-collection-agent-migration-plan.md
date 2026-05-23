@@ -280,6 +280,11 @@ order and appends `browser_actions` before `agent_browser_actions` when both are
 present in the same report scope. This is a wrapper ingestion contract only; the
 current vendored pipeline is not claimed to emit those fields yet.
 
+The TinyFish Agent goal generator now asks the Agent itself to include
+`agent_browser_actions` beside `records` in its result JSON. That makes the
+producer responsible for ordered navigation/click/type/extract actions instead
+of asking the self-healing layer to infer browser behavior after the fact.
+
 If TinyFish Agent result JSON includes explicit `browser_actions` or
 `agent_browser_actions`, the vendored runner now carries those arrays into the
 saved Agent run records and phase-scoped run report fields. Generic `actions`

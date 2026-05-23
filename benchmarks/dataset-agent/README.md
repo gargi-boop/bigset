@@ -98,7 +98,9 @@ descriptions before any `playwright-candidate-script` can be emitted.
 Collection runners can feed those actions through explicit report fields such
 as `browser_actions` or `agent_browser_actions`. BigSet maps only those explicit
 actions into `browser` trace steps; it does not infer selectors or clicks from
-URLs, source outcomes, or prose diagnostics.
+URLs, source outcomes, or prose diagnostics. The collection TinyFish Agent goal
+now explicitly asks the Agent to return `agent_browser_actions` next to
+`records`, so browser replay evidence starts at the producer contract.
 
 Mapping is mechanical:
 
