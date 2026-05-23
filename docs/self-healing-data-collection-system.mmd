@@ -1,0 +1,38 @@
+flowchart LR
+  A["Dataset request"] --> B["BigSet app<br/>/populate"]
+
+  subgraph R["Collection runtimes"]
+    C["Mastra<br/>app-integrated target"]
+    D["Collection agent<br/>logic being migrated"]
+  end
+
+  B --> C
+  B --> D
+  D -. "migrate into" .-> C
+
+  subgraph S["Self-healing layer"]
+    E["Run collection"]
+    F["Validate rows, sources, evidence"]
+    G["Promote good recipe"]
+    H["Reject bad candidate"]
+    I["Cap real commits<br/>100 rows/hour/dataset"]
+  end
+
+  C --> E
+  D --> E
+  E --> F
+  F -->|"good"| G --> I
+  F -->|"bad"| H
+
+  subgraph P["Browser replay path"]
+    J["Process trace"]
+    K["Explicit browser actions"]
+    L["Playwright candidate script"]
+    M["Cron replay<br/>future"]
+    N["Script repair loop<br/>future"]
+  end
+
+  E --> J --> K --> L
+  L -. "future" .-> M
+  M -. "fails" .-> N
+  N -. "repair" .-> L
