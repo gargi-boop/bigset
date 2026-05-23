@@ -54,6 +54,86 @@ test("explicit browser actions are copied from Agent results without generic inf
   });
 });
 
+test("Agent navigation summaries become replayable browser actions", () => {
+  const actions = explicitBrowserActionsFromAgentResult({
+    pageUrl: "https://example.com/start",
+    agentResult: {
+      navigation: {
+        initial_url: "https://example.com/start",
+        category_clicked: "K-CUP® PODS",
+      },
+      extraction: {
+        total_items: 25,
+      },
+    },
+  });
+
+  assert.deepEqual(actions, [
+    {
+      action: "navigate",
+      url: "https://example.com/start",
+      status: "succeeded",
+      phase: "initial",
+      label: "agent-navigation-start",
+    },
+    {
+      action: "click",
+      url: "https://example.com/start",
+      target_text: "K-CUP® PODS",
+      status: "succeeded",
+      phase: "navigation",
+      label: "agent-click-category",
+    },
+    {
+      action: "extract",
+      url: "https://example.com/start",
+      status: "succeeded",
+      phase: "extract",
+      label: "agent-extract-results",
+    },
+  ]);
+});
+
+test("Agent string browser action reports become replayable actions", () => {
+  const actions = explicitBrowserActionsFromAgentResult({
+    pageUrl: "https://example.com/store",
+    agentResult: {
+      agent_browser_actions: [
+        "Navigate to the store page at https://example.com/store.",
+        "Navigate to the K-Cup Pods section of the store to locate product listings.",
+        "Extract the first 25 products, collecting name, price, image URL, stock status, numerical price, and source URL.",
+      ],
+    },
+  });
+
+  assert.deepEqual(actions, [
+    {
+      action: "navigate",
+      url: "https://example.com/store",
+      status: "succeeded",
+      phase: "navigation",
+      label: "Navigate to the store page at https://example.com/store.",
+    },
+    {
+      action: "click",
+      url: "https://example.com/store",
+      target_text: "K-Cup Pods",
+      status: "succeeded",
+      phase: "navigation",
+      label:
+        "Navigate to the K-Cup Pods section of the store to locate product listings.",
+    },
+    {
+      action: "extract",
+      url: "https://example.com/store",
+      status: "succeeded",
+      phase: "extract",
+      label:
+        "Extract the first 25 products, collecting name, price, image URL, stock status, numerical price, and source URL.",
+    },
+  ]);
+});
+
 test("Agent run records and run reports persist browser action arrays", () => {
   const browserActions = [{
     action: "click",

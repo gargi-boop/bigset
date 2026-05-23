@@ -105,7 +105,9 @@ The current layer now can:
   `runtime`, `searchQueries`, `fetchedUrls`, `sourceArtifacts`,
   `selectedRowSource`, `notes`, and ordered `steps`
 - expose a `playwright-candidate-readiness` artifact that explains whether the
-  trace is grounded enough to compile a future Playwright script
+  trace is grounded enough to compile a Playwright replay script
+- emit a `playwright-candidate-script` artifact with
+  `runDatasetRecipe(context)` when readiness is `ready`
 - represent browser actions in the trace contract when a future Agent/canary
   records URL transitions, selectors, target text, or redacted input
   descriptions
@@ -124,9 +126,7 @@ The current layer now can:
 
 The current layer does not yet:
 
-- generate Playwright scripts as a durable production recipe
-- emit `playwright-candidate-script`; that artifact kind is reserved for the
-  future compiler and is not produced yet
+- promote Playwright scripts as durable production recipes
 - run cron from compiled Playwright scripts
 - repair or promote Playwright scripts; repair still changes durable runtime
   instructions only
@@ -345,8 +345,8 @@ branch, rescored with the rejected-candidate gate:
 
 ## Next Engineering Move
 
-Create fresh branches from `codex/benchmark-self-healing-action-gate`. Do not
-edit `main`, Meteor's branch, or the dirty local checkout.
+Create fresh branches from the current rollup/producer stack. Do not edit
+`main`, Meteor's branch, or the dirty local checkout.
 
 1. Ask Meteor's migrated collection agent to emit explicit action traces.
    - Preferred fields are `browser_actions` or `agent_browser_actions`.
@@ -357,9 +357,10 @@ edit `main`, Meteor's branch, or the dirty local checkout.
    - `COLLECTION_AGENT_ENABLE_AGENT=true`
    - `--require-playwright-ready`
    - PR #60's rejected-candidate gate
-3. Only after that canary produces `selfHealingAction` other than
-   `candidate_rejected` and `playwrightCandidateStatus: "ready"`, start a
-   Playwright compiler branch.
+3. When that canary produces `selfHealingAction` other than
+   `candidate_rejected` and `playwrightCandidateStatus: "ready"`, inspect the
+   `playwright-candidate-script` artifact and promote the script runner/cron
+   contract behind a separate gate.
 4. Run the full prompt pack only after the focused canaries are not obviously
    broken.
 

@@ -17,6 +17,7 @@ import {
   playwrightCandidateReadinessForRun,
   type PopulatePlaywrightCandidateReadiness,
 } from "./populate-playwright-readiness.js";
+import { playwrightCandidateScriptForRun } from "./populate-playwright-candidate-script.js";
 
 export type PopulateRecipeStatus =
   | "active"
@@ -884,6 +885,9 @@ function artifactsForRun(input: {
     processTrace.fetchedUrls.length > 0 ||
     processTrace.sourceArtifacts.length > 0
   ) {
+    const playwrightCandidateScript = playwrightCandidateScriptForRun({
+      result: input.result,
+    });
     artifacts.push({
       kind: "process-trace",
       label: "populate-process-trace",
@@ -896,6 +900,16 @@ function artifactsForRun(input: {
         playwrightCandidateReadinessForRun({ result: input.result })
       ),
     });
+    if (
+      playwrightCandidateScript &&
+      playwrightCandidateScript.length <= MAX_ARTIFACT_TEXT_LENGTH
+    ) {
+      artifacts.push({
+        kind: "playwright-candidate-script",
+        label: "populate-playwright-candidate-script",
+        content: playwrightCandidateScript,
+      });
+    }
   }
   return artifacts;
 }

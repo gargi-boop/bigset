@@ -90,10 +90,12 @@ App and CLI collection-runtime runs use the same runner shape, but load it from
 
 Self-healing run records now include a `process-trace` artifact when a runtime
 exposes trace data and a `playwright-candidate-readiness` artifact that says
-whether the trace is grounded enough for a future Playwright compiler. Search
-and fetch URLs alone are not enough. The readiness gate expects real browser
-actions such as URL transitions, selectors, target text, or redacted input
-descriptions before any `playwright-candidate-script` can be emitted.
+whether the trace is grounded enough for Playwright replay. When that readiness
+status is `ready`, the run also emits a `playwright-candidate-script` artifact
+that exports `runDatasetRecipe(context)`. Search and fetch URLs alone are not
+enough. The readiness gate expects real browser actions such as URL transitions,
+selectors, target text, or redacted input descriptions before any script can be
+emitted.
 
 Collection runners can feed those actions through explicit report fields such
 as `browser_actions` or `agent_browser_actions`. BigSet maps only those explicit
