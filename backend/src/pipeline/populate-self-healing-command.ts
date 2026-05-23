@@ -23,6 +23,7 @@ export interface PopulateSelfHealingCliOptions {
   shouldCommitRows: boolean;
   recipeStoreDirectory?: string;
   maxRows?: number;
+  commitRowLimitPerHour?: number;
 }
 
 export interface PopulateSelfHealingCliDependencies {
@@ -90,6 +91,15 @@ export async function runPopulateSelfHealingCli(
       rowWriter,
       shouldCommitRows: options.shouldCommitRows,
       runtime,
+      commitRowLimit: options.shouldCommitRows
+        ? {
+          maxRowsPerWindow: commitRowLimitPerHour({
+            optionValue: options.commitRowLimitPerHour,
+            envValue: input.env.POPULATE_COMMIT_ROW_LIMIT_PER_HOUR,
+          }),
+          windowMs: 60 * 60 * 1_000,
+        }
+        : undefined,
     });
 
     writeStdout(JSON.stringify(summaryForResult(result, !options.shouldCommitRows)));
@@ -150,6 +160,14 @@ export function parsePopulateSelfHealingCliArgs(
         throw new Error("--max-rows requires a positive integer.");
       }
       options.maxRows = parsed;
+      index += 1;
+    } else if (arg === "--commit-row-limit-per-hour") {
+      const value = argv[index + 1];
+      const parsed = Number(value);
+      if (!Number.isInteger(parsed) || parsed <= 0) {
+        throw new Error("--commit-row-limit-per-hour requires a positive integer.");
+      }
+      options.commitRowLimitPerHour = parsed;
       index += 1;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
@@ -232,12 +250,32 @@ function summaryForResult(
     action: result.action,
     datasetId: result.datasetId,
     committedRows: result.committedRows,
+    commitLimit: result.commitLimit,
     rowCount: diagnosticRun?.rows.length ?? 0,
     validationIssues: result.validationIssues,
     rejectionReasons: result.rejectionReasons,
     productionValidation: diagnosticRun?.productionValidation,
     metrics: diagnosticRun?.metrics,
   };
+}
+
+function commitRowLimitPerHour(input: {
+  optionValue?: number;
+  envValue?: string;
+}): number {
+  if (input.optionValue !== undefined) {
+    return input.optionValue;
+  }
+  if (input.envValue === undefined || input.envValue === "") {
+    return 100;
+  }
+  const parsed = Number(input.envValue);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(
+      "POPULATE_COMMIT_ROW_LIMIT_PER_HOUR must be a positive integer."
+    );
+  }
+  return parsed;
 }
 
 async function readProcessStdin(): Promise<string> {

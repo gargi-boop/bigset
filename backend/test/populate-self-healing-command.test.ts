@@ -46,6 +46,21 @@ test("self-healing CLI parses dataset-id mode", () => {
   });
 });
 
+test("self-healing CLI parses commit row limit override", () => {
+  assert.deepEqual(parsePopulateSelfHealingCliArgs([
+    "--dataset-id",
+    "dataset-ai-posts",
+    "--commit",
+    "--commit-row-limit-per-hour",
+    "250",
+  ]), {
+    datasetId: "dataset-ai-posts",
+    shouldReadStdin: false,
+    shouldCommitRows: true,
+    commitRowLimitPerHour: 250,
+  });
+});
+
 test("self-healing CLI rejects dataset-id mixed with context input", () => {
   assert.throws(
     () => parsePopulateSelfHealingCliArgs([
@@ -240,6 +255,8 @@ test("self-healing CLI dataset-id commit loads context and creates writer", asyn
       assert.equal(input.store, undefined);
       assert.equal(input.recipeStoreDirectory, ".bigset/populate-recipes");
       assert.ok(input.rowWriter);
+      assert.equal(input.commitRowLimit?.maxRowsPerWindow, 100);
+      assert.equal(input.commitRowLimit?.windowMs, 60 * 60 * 1_000);
       return successfulResult(input.context.datasetId);
     },
   });

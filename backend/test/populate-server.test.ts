@@ -55,6 +55,8 @@ test("POST /populate passes selected runtime into self-healing runner", async ()
       assert.equal(input.shouldCommitRows, true);
       assert.equal(input.recipeStoreDirectory, ".bigset/populate-recipes");
       assert.ok(input.rowWriter);
+      assert.equal(input.commitRowLimit?.maxRowsPerWindow, 100);
+      assert.equal(input.commitRowLimit?.windowMs, 60 * 60 * 1_000);
       return successfulResult(input.context.datasetId);
     },
   });

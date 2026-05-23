@@ -38,6 +38,10 @@ the collection pipeline is migrated into BigSet.
   `selfHealingAction: "candidate_rejected"` fail benchmark scoring with
   `failureCategory: "capability_gate"`, even when diagnostic rows match answer
   keys.
+- This branch adds a commit-path row cap for self-healing writes. Commit mode
+  defaults to 100 committed rows/hour per dataset and can be overridden with
+  `POPULATE_COMMIT_ROW_LIMIT_PER_HOUR` or
+  `--commit-row-limit-per-hour`.
 - `feat/data-collection-agent-v14` is no longer the branch to build on directly.
   It was the source of the collection pipeline port. New work should branch on
   top of the current draft stack, not edit Meteor's branch or the dirty main
@@ -84,6 +88,7 @@ The current layer:
 - promotes a repaired recipe only if it is valid and does not score below the
   active recipe baseline
 - commits rows only after a successful tick, using one Convex atomic replace
+- enforces a configurable per-dataset hourly row cap before committing rows
 - supports a CLI path for cron/live smoke via `populate:self-heal --dataset-id`
 
 Dry-run and benchmark paths intentionally use in-memory stores so they do not
@@ -133,8 +138,6 @@ The current layer does not yet:
 - run a green live Convex canary in this local environment
 - prove Agent-enabled collection quality on a full real benchmark
 - prove the collection runtime should replace Mastra as the default app runtime
-- enforce the planned per-dataset row commit cap, such as 100 rows/hour, on the
-  self-healing commit path
 
 ## Migration Sequence
 
@@ -253,6 +256,8 @@ Before any merge:
   follow-up
 - live dataset commit is tested only on a throwaway dataset
 - backend build does not depend on `frontend/convex/_generated`
+- commit-mode row caps block Convex writes before the cap is exceeded and skip
+  runtime work when the cap is already exhausted
 
 ## Meteor Handoff Shape
 
@@ -343,21 +348,14 @@ edit `main`, Meteor's branch, or the dirty local checkout.
    - Each action should include at least URL or selector/target text plus safe,
      redacted value descriptions for form inputs.
    - Do not build a Playwright compiler against search/fetch-only traces.
-2. Add a small self-healing commit-path row cap when commit safety becomes the
-   immediate risk.
-   - Start with a configurable per-dataset cap such as 100 committed rows/hour.
-   - Enforce it before `rowWriter.replaceRows(...)` on commit mode.
-   - Keep dry-run and benchmark lanes unaffected.
-   - Gate it with unit tests for allowed commit, blocked commit, and no runtime
-     execution when the cap is already exhausted.
-3. Re-run the Agent-enabled `mcp-docs-pages` canary with:
+2. Re-run the Agent-enabled `mcp-docs-pages` canary with:
    - `COLLECTION_AGENT_ENABLE_AGENT=true`
    - `--require-playwright-ready`
    - PR #60's rejected-candidate gate
-4. Only after that canary produces `selfHealingAction` other than
+3. Only after that canary produces `selfHealingAction` other than
    `candidate_rejected` and `playwrightCandidateStatus: "ready"`, start a
    Playwright compiler branch.
-5. Run the full prompt pack only after the focused canaries are not obviously
+4. Run the full prompt pack only after the focused canaries are not obviously
    broken.
 
 When testing the real app or CLI path, set:
@@ -366,6 +364,7 @@ When testing the real app or CLI path, set:
 POPULATE_AGENT_RUNTIME=collection
 POPULATE_COLLECTION_RUNNER_MODULE=./backend/src/pipeline/collection-agent-runner.ts
 COLLECTION_AGENT_PIPELINE_MODULE=./backend/BigSet_Data_Collection_Agent/src/orchestrator/pipeline.ts
+POPULATE_COMMIT_ROW_LIMIT_PER_HOUR=100
 ```
 
 The BigSet runner keeps TinyFish Agent/browser calls disabled unless

@@ -28,3 +28,12 @@ Starts on [localhost:3501](http://localhost:3501).
 | `npm run dev` | Start with hot reload |
 | `npm run build` | Compile TypeScript |
 | `npm run db:push` | Push schema changes to Postgres |
+
+## Self-Healing Commit Cap
+
+`populate:self-heal --commit` and `POST /populate` cap committed rows per
+dataset at 100 rows/hour by default. Override with
+`POPULATE_COMMIT_ROW_LIMIT_PER_HOUR` or CLI
+`--commit-row-limit-per-hour`.
+
+Dry runs and benchmarks do not commit rows, so they do not consume this cap.
