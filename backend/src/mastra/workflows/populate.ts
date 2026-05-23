@@ -121,11 +121,6 @@ const populateStep = createStep({
       collectionMemory,
     });
 
-    if (collectionMemory) {
-      await collectionMemory.save();
-      debugNotes.push("Collection memory saved.");
-    }
-
     const { convex, internal } = await import("../../convex.js");
     const columnKeyAliases = buildPopulateColumnKeyAliases(
       inputData.dataSpec as DatasetSchema,
@@ -141,6 +136,13 @@ const populateStep = createStep({
     console.log(
       `[populate-dataset] Wrote ${replacement.insertedRowCount} row(s) to Convex (${result.validationIssues.length} validation note(s))`
     );
+
+    if (collectionMemory) {
+      const saved = await collectionMemory.save();
+      debugNotes.push(
+        saved ? "Collection memory saved." : "Collection memory not persisted (see server log)."
+      );
+    }
 
     return {
       text: JSON.stringify({

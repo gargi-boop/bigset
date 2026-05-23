@@ -39,13 +39,23 @@ export class PopulateCollectionMemoryService {
     return this.memory;
   }
 
-  async save(): Promise<void> {
+  /** Best-effort persistence — populate must succeed even if disk is unavailable. */
+  async save(): Promise<boolean> {
     if (!this.memory) {
-      return;
+      return false;
     }
     const config = resolvePopulateCollectionMemoryConfig();
     const memoryDir = this.input.memoryDir ?? config.memoryDir;
-    await saveCollectionMemory(memoryDir, this.memory);
+    try {
+      await saveCollectionMemory(memoryDir, this.memory);
+      return true;
+    } catch (error) {
+      console.warn(
+        `[collection-memory] Failed to persist memory for dataset ${this.input.datasetId}:`,
+        error instanceof Error ? error.message : error
+      );
+      return false;
+    }
   }
 
   recordAgentVisit(input: {

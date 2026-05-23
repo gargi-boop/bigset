@@ -27,9 +27,12 @@ export function recordAgentVisitedUrl(
         ? extractEmittedProcessFromAgentResult(input.run.result)
         : undefined;
 
+  const finalUrl =
+    input.finalUrl && input.finalUrl !== input.url ? input.finalUrl : undefined;
+
   const entry: AgentVisitedUrlEntry = {
     url: input.url,
-    final_url: input.finalUrl,
+    final_url: finalUrl,
     repair_loop: input.repairLoop ?? memory.repair_loop.current_loop,
     provider: input.provider,
     goal: input.goal,
@@ -37,7 +40,7 @@ export function recordAgentVisitedUrl(
     status: input.run.status,
     visited_at: new Date().toISOString(),
     error: input.run.error,
-    emitted_process: emittedProcess,
+    emitted_process: cloneJsonRecord(emittedProcess),
     triage_status: input.triage?.status,
     suggested_action: input.triage?.suggested_action,
   };
@@ -63,6 +66,19 @@ export function markRepairLoopPending(memory: PopulateCollectionMemory): Populat
     },
     updated_at: new Date().toISOString(),
   };
+}
+
+function cloneJsonRecord(
+  value: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  if (!value) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+  } catch {
+    return { capture_error: "non_serializable_emitted_process" };
+  }
 }
 
 export function patchRepairLoopState(
