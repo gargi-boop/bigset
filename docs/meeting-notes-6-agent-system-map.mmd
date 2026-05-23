@@ -1,0 +1,45 @@
+flowchart LR
+  request["User asks BigSet for a dataset"]
+  populate["BigSet app /populate"]
+
+  subgraph mastra["Mastra collection pipeline"]
+    search_agent["Agent 1: search and prioritize sources"]
+    fetch_sources["Fetch selected sources"]
+    browser_decision{"Need browser navigation?"}
+    populate_agent["Agent 2: populate dataset rows"]
+  end
+
+  subgraph browser["Browser / Playwright stage"]
+    tinyfish_agent["TinyFish Agent navigates site"]
+    browser_actions["Explicit browser actions"]
+    playwright_script["Playwright candidate script"]
+    cron_future["Cron replay future"]
+  end
+
+  subgraph healing["Self-healing layer"]
+    oracle["Oracle: defines good output"]
+    validate["Validate rows, sources, evidence"]
+    promote["Promote good recipe"]
+    reject["Reject bad candidate"]
+    commit_cap["Commit cap: 100 rows per hour per dataset"]
+    repair["Repair missing fields across searches"]
+  end
+
+  request --> populate
+  populate --> search_agent
+  search_agent --> fetch_sources
+  fetch_sources --> browser_decision
+  browser_decision -->|"no"| populate_agent
+  browser_decision -->|"yes"| tinyfish_agent
+  tinyfish_agent --> browser_actions
+  browser_actions --> playwright_script
+  playwright_script --> populate_agent
+  playwright_script -. "later" .-> cron_future
+
+  populate_agent --> oracle
+  oracle --> validate
+  validate -->|"good"| promote
+  promote --> commit_cap
+  validate -->|"bad"| reject
+  reject --> repair
+  repair --> search_agent
