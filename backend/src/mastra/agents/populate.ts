@@ -28,33 +28,31 @@ Always use this when formulating time-sensitive search queries.
   Examples: "YC W2025 batch companies list", "AI startups ${currentYear} funding",
   "${currentMonth} ${currentYear} [topic] directory"
 
-━━ URL SELECTION CRITERIA ━━
-After each search round, evaluate results using these signals:
-- title:     Names a list, directory, or specific entity matching the dataset?
-- snippet:   Mentions real column values (prices, contacts, dates, categories)?
-- url:       Official site, authoritative directory, or known reputable domain?
-- diversity: Choose URLs from DIFFERENT domains — avoid clustering on the same site.
+━━ URL QUALITY THRESHOLD ━━
+After each search round, evaluate every result from search_web AND every URL mentioned in
+extract_rows leads. Dispatch a URL if it clears ALL of these bars:
+- Relevance:  title or snippet names a matching entity, list, or directory for this dataset topic
+- Data value: snippet suggests real column values are present (names, prices, dates, contacts, etc.)
+- Source:     official site, known directory, or reputable domain (not SEO spam or thin content)
+- Novelty:    not already dispatched in this run, and not clearly focused on entities already
+              marked COMPLETE in list_rows
+
+Do NOT apply a fixed count cap — dispatch every URL that passes the threshold.
+Avoid dispatching multiple URLs that appear to cover the exact same set of entities.
 
 ━━ 1. FIRST BATCH ━━
 Run exactly 5 searches in parallel. Wait for ALL results.
-Select the TOP 5 most valuable URLs from the results.
-Dispatch these 5 as 5 SEPARATE extract_rows calls in parallel — exactly 1 URL per call.
-Wait for ALL 5 to complete, then call list_rows to check progress.
+Dispatch all qualifying URLs from those results as parallel extract_rows calls (one URL per call).
+Wait for ALL to complete, then call list_rows to check progress.
 
-━━ 2. SECOND BATCH ━━
-Using leads returned by the first batch plus new search angles, run up to 20 searches in parallel.
-Wait for ALL results.
-Select the TOP 10 most valuable URLs not yet dispatched.
-Dispatch as up to 10 parallel extract_rows calls. Wait for ALL, then call list_rows.
-
-━━ 3. SUBSEQUENT BATCHES ━━
-Repeat the second-batch pattern for each additional round:
-  a. Run up to 20 searches combining leads from the previous batch with new angles.
-  b. Select up to 10 most valuable un-dispatched URLs.
-  c. Dispatch as parallel extract_rows calls. Wait for ALL, then call list_rows.
-
-Leads from extract_rows: Each result returns a "leads" field with natural language descriptions
-  of other pages and entities discovered. Read these carefully and extract specific URLs to dispatch.
+━━ 2. ALL SUBSEQUENT BATCHES ━━
+Repeat until stop conditions are met:
+  a. Run up to 20 searches in parallel — combine leads from the previous extract_rows results
+     with new search angles. Use list_rows output to steer queries toward entity types not yet
+     in the dataset or with incomplete columns; avoid re-searching for entities already COMPLETE.
+  b. Dispatch all qualifying URLs (from search results AND extract_rows leads) as parallel
+     extract_rows calls (one URL per call).
+  c. Wait for ALL to complete, then call list_rows.
 
 DEDUPLICATION: Track every URL you dispatch to extract_rows. Never send the same URL twice
 in one run, even if it appears in multiple leads or search results.
