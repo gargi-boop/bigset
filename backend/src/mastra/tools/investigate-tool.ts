@@ -211,11 +211,11 @@ function buildUpdateRowByKeyTool(
   return createTool({
     id: "update_row_by_key",
     description:
-      "Update an existing row identified by its primary key value — but ONLY if your " +
-      "source has HIGHER confidence than the current data. Automatically skipped " +
-      "(success: true, skipped: true) if existing confidence is equal or higher. " +
-      "Non-empty values in data override existing values; empty strings are ignored " +
-      "(existing filled cells are never overwritten with blanks). " +
+      "Update an existing row identified by its primary key value using per-field merge rules: " +
+      "blank cells are always filled with your non-empty values regardless of confidence; " +
+      "non-blank cells are only overwritten when your confidence is strictly higher than the " +
+      "row's existing confidence. Empty strings in data are always skipped. " +
+      "Returns skipped: true when no field satisfied the merge rules (a no-op, not an error). " +
       "Provide source URLs for each column you are updating.",
     inputSchema: z.object({
       primary_key: z
@@ -225,11 +225,12 @@ function buildUpdateRowByKeyTool(
         .number()
         .min(0)
         .max(1)
-        .describe("Your source confidence 0–1"),
+        .describe("Your source confidence 0–1 (1.0 = official primary source, 0.5 = aggregator, 0.2 = indirect mention)"),
       data: z
         .record(z.string(), z.any())
         .describe(
-          "Column values to update. Non-empty values override existing; empty strings are skipped.",
+          "Column values to merge. Blank cells always accept non-empty values; " +
+          "non-blank cells only update when your confidence is higher. Empty strings are skipped.",
         ),
       sources: z
         .record(z.string(), z.string())
@@ -248,45 +249,57 @@ function buildUpdateRowByKeyTool(
           error: `"${primary_key}" not found. Use insert_row for new entities.`,
         };
       }
-      if (confidence <= existing.confidence) {
-        console.log(
-          `[update_row_by_key] ${logCtx} pk="${primary_key}" skipped ` +
-            `(existing confidence ${existing.confidence.toFixed(2)} >= ${confidence.toFixed(2)})`,
-        );
-        return { success: true, skipped: true };
-      }
 
       const cleanedNew = cleanDataKeys(data);
-      const mergedCells: Record<string, unknown> = { ...existing.cells };
-      for (const [col, val] of Object.entries(cleanedNew)) {
-        if (val !== null && val !== undefined && val !== "") {
-          mergedCells[col] = val;
-        }
-      }
-
-      const enrichedData: Record<string, unknown> = {
-        ...mergedCells,
-        _confidence: confidence,
-        _sources: sources,
-      };
-
       console.log(
         `[update_row_by_key] ${logCtx} pk="${primary_key}" ` +
-          `confidence ${existing.confidence.toFixed(2)}→${confidence.toFixed(2)}`,
+          `attempting merge at confidence=${confidence.toFixed(2)} (existing=${existing.confidence.toFixed(2)})`,
       );
+
       try {
-        await convex.mutation(internal.datasetRows.update, {
+        // mergeUpdate atomically reads the current committed row, applies
+        // per-field blank-aware merge rules, and writes — eliminating the
+        // race window that existed when the confidence check happened here
+        // against a stale in-memory rowIndex.
+        const result = await convex.mutation(internal.datasetRows.mergeUpdate, {
           id: existing.rowId as any,
           expectedDatasetId: authorizedDatasetId,
-          data: enrichedData,
+          newData: cleanedNew,
+          newConfidence: confidence,
+          newSources: sources,
         });
+
+        if (!result.merged) {
+          console.log(
+            `[update_row_by_key] ${logCtx} pk="${primary_key}" no-op (no fields changed)`,
+          );
+          return { success: true, skipped: true };
+        }
+
+        // Mirror the same per-field merge logic in the local rowIndex so
+        // subsequent calls within this run see a consistent view without
+        // a Convex round-trip.
+        const updatedCells: Record<string, unknown> = { ...existing.cells };
+        for (const [col, val] of Object.entries(cleanedNew)) {
+          if (col.startsWith("_")) continue;
+          if (val === null || val === undefined || val === "") continue;
+          const existingVal = updatedCells[col];
+          const existingIsBlank =
+            existingVal === null || existingVal === undefined || existingVal === "";
+          if (existingIsBlank || confidence > existing.confidence) {
+            updatedCells[col] = val;
+          }
+        }
 
         rowIndex.set(primary_key, {
           rowId: existing.rowId,
-          confidence,
-          cells: mergedCells,
+          confidence: Math.max(existing.confidence, confidence),
+          cells: updatedCells,
         });
 
+        console.log(
+          `[update_row_by_key] ${logCtx} pk="${primary_key}" merged ok`,
+        );
         return { success: true };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
