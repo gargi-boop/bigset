@@ -20,11 +20,7 @@ function buildOrchestratorInstructions(targetRows: number): string {
 Today is ${currentMonth} ${currentYear} (${now.toISOString().slice(0, 10)}).
 Always use this when formulating time-sensitive search queries.
 
-━━ 1. SEARCH IN TWO ROUNDS ━━
-Round 1: Run exactly 5 searches in parallel — wait for ALL results before continuing.
-Round 2: Using new angles learned from Round 1, run exactly 10 more searches in parallel — wait for ALL.
-
-Search query rules:
+━━ SEARCH QUERY RULES ━━
 - Cover different angles: entity lists, official directories, aggregator sites, specific entity pages.
 - TIME SENSITIVITY: If the dataset topic mentions "recent", "current", "latest", "this year",
   or a specific year, always include the relevant year or month explicitly in every query.
@@ -32,36 +28,33 @@ Search query rules:
   Examples: "YC W2025 batch companies list", "AI startups ${currentYear} funding",
   "${currentMonth} ${currentYear} [topic] directory"
 
-━━ 2. PRIORITIZE: SELECT TOP 5 URLS ━━
-After both search rounds complete, evaluate ALL results and select the TOP 5 most valuable URLs.
-Selection criteria:
+━━ URL SELECTION CRITERIA ━━
+After each search round, evaluate results using these signals:
 - title:     Names a list, directory, or specific entity matching the dataset?
 - snippet:   Mentions real column values (prices, contacts, dates, categories)?
 - url:       Official site, authoritative directory, or known reputable domain?
-- diversity: Choose URLs from DIFFERENT domains — do not pick 5 from the same site.
+- diversity: Choose URLs from DIFFERENT domains — avoid clustering on the same site.
 
-Dispatch these TOP 5 as 5 SEPARATE extract_rows calls in parallel — exactly 1 URL per call.
-Wait for ALL 5 to complete before proceeding.
+━━ 1. FIRST BATCH ━━
+Run exactly 5 searches in parallel. Wait for ALL results.
+Select the TOP 5 most valuable URLs from the results.
+Dispatch these 5 as 5 SEPARATE extract_rows calls in parallel — exactly 1 URL per call.
+Wait for ALL 5 to complete, then call list_rows to check progress.
 
-━━ 3. CHECK PROGRESS WITH list_rows ━━
-After each batch of extract_rows calls completes, call list_rows to see the current dataset state.
-list_rows shows you:
-  - How many rows are complete vs. incomplete
-  - Which specific columns are still missing for each entity
+━━ 2. SECOND BATCH ━━
+Using leads returned by the first batch plus new search angles, run up to 20 searches in parallel.
+Wait for ALL results.
+Select the TOP 10 most valuable URLs not yet dispatched.
+Dispatch as up to 10 parallel extract_rows calls. Wait for ALL, then call list_rows.
 
-Use this to:
-  a. Determine whether you have reached ${targetRows} complete rows (stop condition a).
-  b. Identify which entities still need data — use this context to prioritize future searches.
+━━ 3. SUBSEQUENT BATCHES ━━
+Repeat the second-batch pattern for each additional round:
+  a. Run up to 20 searches combining leads from the previous batch with new angles.
+  b. Select up to 10 most valuable un-dispatched URLs.
+  c. Dispatch as parallel extract_rows calls. Wait for ALL, then call list_rows.
 
-━━ 4. CONTINUE DISPATCHING NEW URLS ━━
-After checking progress, continue with new URLs from:
-  Leads from extract_rows: Each result returns a "leads" field with natural language descriptions
-    of other pages and entities discovered. Read these carefully and extract specific URLs to dispatch.
-  New searches: Run additional searches if more coverage is needed.
-
-Dispatch further batches in parallel — no limit on batch size.
-Each call returns a triage_status: "extract_now" means the page had useful content;
-"needs_browser_agent" / "needs_form_fill" / "low_value" / "blocked" mean the page was skipped.
+Leads from extract_rows: Each result returns a "leads" field with natural language descriptions
+  of other pages and entities discovered. Read these carefully and extract specific URLs to dispatch.
 
 DEDUPLICATION: Track every URL you dispatch to extract_rows. Never send the same URL twice
 in one run, even if it appears in multiple leads or search results.
