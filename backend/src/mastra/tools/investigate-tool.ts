@@ -2,6 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { buildInvestigateAgent } from "../agents/investigate.js";
 import { buildExtractAgent } from "../agents/extract.js";
+import { executeFetchPage } from "../tools/web-tools.js";
 import type { AuthContext } from "../workflows/populate.js";
 import type { PopulateColumn } from "../../pipeline/populate.js";
 import { convex, internal } from "../../convex.js";
@@ -544,6 +545,14 @@ export function buildExtractTool(
   // Caps total concurrent investigate_entity agents across the whole run.
   const investigateSemaphore = new Semaphore(MAX_CONCURRENT_INVESTIGATIONS);
 
+  // Per-iteration extract call counter. Enforces the hard cap in code so the
+  // orchestrator LLM cannot exceed it even if it ignores the instruction.
+  // Reset to 0 each time list_rows is called (i.e. at the Phase 2→3 boundary).
+  // Synchronous check+increment before the first await is atomic in JS's
+  // single-threaded event loop — same pattern as pendingInserts.
+  const MAX_EXTRACT_PER_ITER = Math.max(3, Math.ceil(targetRows / 4));
+  let iterationExtractCount = 0;
+
   function countCompleteRows(): number {
     let n = 0;
     for (const { cells } of rowIndex.values()) {
@@ -689,6 +698,10 @@ export function buildExtractTool(
     inputSchema: z.object({}),
     outputSchema: z.object({ summary: z.string() }),
     execute: async () => {
+      // Reset the per-iteration extract counter — list_rows is called once at
+      // the Phase 2→3 boundary, so this resets the cap for the next iteration.
+      iterationExtractCount = 0;
+
       const complete = countCompleteRows();
       const total = rowIndex.size;
       if (total === 0) return { summary: "No rows yet." };
@@ -753,11 +766,7 @@ export function buildExtractTool(
       source_quality: z.string(),
     }),
     execute: async ({ source_urls, context, notes }) => {
-      console.log(
-        `[extract_rows] ${logCtx} url=${source_urls[0]} known_rows=${rowIndex.size}`,
-      );
-
-      // Hard cap: if target is already reached, skip this batch.
+      // Hard cap: if target is already reached, skip without counting.
       const completeAtStart = countCompleteRows();
       if (completeAtStart >= targetRows) {
         console.log(
@@ -768,6 +777,25 @@ export function buildExtractTool(
           source_quality: `Target row count (${targetRows}) already reached — skipped.`,
         };
       }
+
+      // Per-iteration cap enforced in code — synchronous check+increment is
+      // atomic before the first await (JS single-threaded event loop).
+      iterationExtractCount++;
+      if (iterationExtractCount > MAX_EXTRACT_PER_ITER) {
+        console.log(
+          `[extract_rows] ${logCtx} skipping — iteration cap reached ` +
+          `(${iterationExtractCount - 1}/${MAX_EXTRACT_PER_ITER}) url=${source_urls[0]}`,
+        );
+        return {
+          leads: source_urls[0], // Return URL as a lead so next iteration can pick it up
+          source_quality: `Iteration extract cap (${MAX_EXTRACT_PER_ITER} per iteration) reached — URL deferred to next iteration.`,
+        };
+      }
+
+      console.log(
+        `[extract_rows] ${logCtx} url=${source_urls[0]} known_rows=${rowIndex.size} ` +
+        `(extract ${iterationExtractCount}/${MAX_EXTRACT_PER_ITER} this iteration)`,
+      );
 
       try {
         // Refresh rowIndex from Convex to pick up rows written by other
@@ -829,6 +857,42 @@ export function buildExtractTool(
           primaryKeyColumn,
         );
 
+        // Single-use fetch_page wrapper: enforces the "exactly one fetch per
+        // extract agent" constraint in code. On a second call it returns a
+        // hard-error message instructing the agent to call batch_insert_rows
+        // immediately with what it already has, rather than fetching more pages.
+        // Uses the shared executeFetchPage implementation from web-tools.ts.
+        let fetchUsed = false;
+        const onceFetchTool = createTool({
+          id: "fetch_page",
+          description:
+            "Fetch a web page and return its content as clean markdown. " +
+            "HARD LIMIT: you may call this EXACTLY ONCE per extraction. " +
+            "A second call returns an error — call batch_insert_rows immediately with what you found on the first page.",
+          inputSchema: z.object({ url: z.string().describe("The URL to fetch") }),
+          outputSchema: z.object({
+            title: z.string().optional(),
+            text: z.string().optional(),
+            error: z.string().optional(),
+          }),
+          execute: async ({ url }) => {
+            if (fetchUsed) {
+              console.log(
+                `[extract_rows/fetch] ${logCtx} BLOCKED second fetch_page call for ${url}`,
+              );
+              return {
+                error:
+                  "HARD LIMIT: fetch_page may only be called ONCE per extraction. " +
+                  "You have already fetched one page this run. " +
+                  "Call batch_insert_rows NOW with the entities from the first page. " +
+                  "Add any additional page URLs to LEADS in your final output.",
+              };
+            }
+            fetchUsed = true;
+            return executeFetchPage(url);
+          },
+        });
+
         const notesBlock = notes ? `\nAdditional hints:\n${notes}` : "";
         const prompt =
           `Fetch and extract from this URL: ${source_urls[0]}\n\n` +
@@ -839,6 +903,7 @@ export function buildExtractTool(
           columns,
           primaryKeyColumn,
           batchInsertRowsTool,
+          onceFetchTool,
         );
 
         // maxSteps: 5 = 1 fetch_page + 1 batch_insert_rows + 3 buffer.

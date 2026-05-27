@@ -1,6 +1,5 @@
 import { Agent } from "@mastra/core/agent";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { fetchPageTool } from "../tools/web-tools.js";
 import type { PopulateColumn } from "../../pipeline/populate.js";
 
 const openrouter = createOpenRouter({
@@ -62,15 +61,10 @@ SOURCE_QUALITY: <brief assessment: data richness, entity coverage, reliability>`
  *
  * The agent receives one URL, fetches the page, extracts every matching
  * entity, and calls batch_insert_rows once with the full entity list.
- * It does NOT spawn investigation agents — that is the orchestrator's
- * responsibility after list_rows.
  *
- * Tools: fetch_page, batch_insert_rows.
- * No search capability — it only fetches the URLs provided.
- *
- * batch_insert_rows is passed in from the buildExtractTool closure so the
- * shared rowIndex and pendingInserts are maintained across all agents in one
- * workflow run.
+ * Both fetchTool and batchInsertRowsTool are passed in (not imported here)
+ * so investigate-tool.ts can supply a single-use fetch_page wrapper that
+ * enforces the "one fetch per agent" hard limit at the code level.
  *
  * A fresh agent instance is constructed per extract_rows call; do not cache.
  */
@@ -78,6 +72,7 @@ export function buildExtractAgent(
   columns: PopulateColumn[],
   primaryKeyColumn: string,
   batchInsertRowsTool: ReturnType<typeof import("@mastra/core/tools").createTool>,
+  fetchTool: ReturnType<typeof import("@mastra/core/tools").createTool>,
 ): Agent {
   return new Agent({
     id: "extract-agent",
@@ -85,7 +80,7 @@ export function buildExtractAgent(
     instructions: buildExtractInstructions(columns, primaryKeyColumn),
     model: openrouter("deepseek/deepseek-v4-pro"),
     tools: {
-      fetch_page: fetchPageTool,
+      fetch_page: fetchTool,
       batch_insert_rows: batchInsertRowsTool,
     },
   });
