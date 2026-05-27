@@ -718,21 +718,20 @@ export function buildExtractTool(
   const extractRowsTool = createTool({
     id: "extract_rows",
     description:
-      "Dispatch a batch of 1–5 source URLs to one extraction agent. " +
-      "The agent fetches all pages in parallel, extracts all matching entities across all pages, " +
+      "Dispatch one source URL to an extraction agent. " +
+      "The agent fetches the page, extracts all matching entities, " +
       "and inserts them in a single batch_insert_rows call. " +
       "Returns leads for your next search round. " +
-      "Run multiple extract_rows calls in parallel for different URL batches — " +
+      "Run multiple extract_rows calls in parallel for different URLs — " +
       "wait for ALL to finish before calling list_rows.",
     inputSchema: z.object({
       source_urls: z
         .array(z.string())
         .min(1)
-        .max(5)
+        .max(1)
         .describe(
-          "1–5 qualifying URLs to process as one batch. " +
-            "Use title, snippet, and site name to select the most relevant pages. " +
-            "Group URLs by topic similarity for best extraction coherence.",
+          "Exactly 1 qualifying URL to process. " +
+            "Use title, snippet, and site name to pick the most relevant page.",
         ),
       context: z
         .string()
@@ -753,7 +752,7 @@ export function buildExtractTool(
     }),
     execute: async ({ source_urls, context, notes }) => {
       console.log(
-        `[extract_rows] ${logCtx} urls=${source_urls.length} known_rows=${rowIndex.size}`,
+        `[extract_rows] ${logCtx} url=${source_urls[0]} known_rows=${rowIndex.size}`,
       );
 
       // Hard cap: if target is already reached, skip this batch.
@@ -816,10 +815,9 @@ export function buildExtractTool(
           primaryKeyColumn,
         );
 
-        const urlList = source_urls.map((u, i) => `${i + 1}. ${u}`).join("\n");
         const notesBlock = notes ? `\nAdditional hints:\n${notes}` : "";
         const prompt =
-          `Fetch and extract from this batch of URLs:\n${urlList}\n\n` +
+          `Fetch and extract from this URL: ${source_urls[0]}\n\n` +
           `Context: ${context}${notesBlock}\n\n` +
           `Existing rows in the dataset:\n${existingRowsText}`;
 
@@ -833,7 +831,7 @@ export function buildExtractTool(
         const parsed = parseExtractOutput(result.text);
 
         console.log(
-          `[extract_rows] done ${logCtx} urls=${source_urls.length} ` +
+          `[extract_rows] done ${logCtx} url=${source_urls[0]} ` +
             `rows=${rowIndex.size} complete=${countCompleteRows()} steps=${result.steps?.length ?? "?"}`,
         );
 

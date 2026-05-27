@@ -85,7 +85,7 @@ export function buildInvestigateAgent(
     id: "investigate-agent",
     name: "Dataset Investigate Agent",
     instructions: buildInvestigateInstructions(columns, primaryKeyColumn),
-    model: openrouter("moonshotai/kimi-k2-0905"),
+    model: openrouter("deepseek/deepseek-v4-pro"),
     tools: {
       search_web: searchWebTool,
       fetch_page: fetchPageTool,

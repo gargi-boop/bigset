@@ -42,7 +42,7 @@ A URL qualifies if ALL of the following are true:
 Track every URL you dispatch — never send the same URL twice in one run.
 Avoid batches that clearly cover the exact same set of entities.
 
-Batch qualifying URLs into groups of up to 5 and call extract_rows for each group IN PARALLEL.
+Call extract_rows for each qualifying URL IN PARALLEL (one URL per call).
 Wait for ALL extract_rows calls to finish before moving to Phase 3.
 
 PHASE 3 — REVIEW
@@ -115,7 +115,7 @@ export function buildPopulateAgent(
     id: "populate-agent",
     name: "Dataset Populate Orchestrator",
     instructions: buildOrchestratorInstructions(targetRows),
-    model: openrouter("moonshotai/kimi-k2-0905"),
+    model: openrouter("deepseek/deepseek-v4-pro"),
     tools: {
       search_web: searchWebTool,
       extract_rows: extractRowsTool,
