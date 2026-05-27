@@ -122,7 +122,14 @@ const agentStep = createStep({
       env.POPULATE_TARGET_ROWS,
     );
     try {
-      const result = await agent.generate(inputData.prompt, { maxSteps: 80 });
+      // 150 steps budget breakdown per iteration:
+      //   Phase 1: ~5 search_web calls
+      //   Phase 2: up to ceil(targetRows/4) extract_rows calls (~5)
+      //   Phase 3: 1 list_rows call
+      //   Phase 4: up to 20 investigate_entity calls
+      // = ~31 orchestrator steps per iteration × ~4 iterations = ~124 steps needed.
+      // 150 gives comfortable headroom for additional iterations or larger targets.
+      const result = await agent.generate(inputData.prompt, { maxSteps: 150 });
       return { text: result.text };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

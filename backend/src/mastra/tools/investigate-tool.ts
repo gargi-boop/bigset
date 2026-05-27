@@ -651,7 +651,9 @@ export function buildExtractTool(
 
       await investigateSemaphore.acquire();
       try {
-        const result = await agent.generate(prompt, { maxSteps: 20 });
+        // maxSteps: 8 = 1 search round (parallel) + 1-2 fetches + 1 update + buffer.
+        // The agent is explicitly instructed to do one search round and stop.
+        const result = await agent.generate(prompt, { maxSteps: 8 });
         const parsed = parseInvestigateOutput(result.text);
 
         console.log(
@@ -839,7 +841,9 @@ export function buildExtractTool(
           batchInsertRowsTool,
         );
 
-        const result = await agent.generate(prompt, { maxSteps: 20 });
+        // maxSteps: 5 = 1 fetch_page + 1 batch_insert_rows + 3 buffer.
+        // The agent is explicitly instructed to use exactly 2 tool calls.
+        const result = await agent.generate(prompt, { maxSteps: 5 });
         const parsed = parseExtractOutput(result.text);
 
         console.log(

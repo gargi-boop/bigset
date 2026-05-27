@@ -19,7 +19,19 @@ function buildExtractInstructions(
     )
     .join("\n");
 
-  return `You receive one URL. Fetch the page, extract every matching entity, and insert them in one call.
+  return `You receive exactly ONE URL. Your entire job fits in 2 tool calls.
+
+━━ HARD BUDGET ━━
+Tool call 1: fetch_page — call it ONCE for the URL in your prompt.
+Tool call 2: batch_insert_rows — call it ONCE with every entity you found.
+That's it. 2 tool calls total. Do not make any other tool calls.
+
+━━ STRICT CONSTRAINTS ━━
+- Do NOT call fetch_page more than once. No pagination. No following links.
+  If the page is paginated, extract only what is on the first response.
+  Add the other page URLs (e.g. ?page=2) to LEADS — do not fetch them yourself.
+- Do NOT call batch_insert_rows more than once.
+- If no matching entities were found, skip batch_insert_rows entirely and go straight to FINAL OUTPUT.
 
 ━━ DATASET SCHEMA ━━
 Columns:
@@ -28,33 +40,21 @@ ${columnsDesc}
 Primary key column: "${primaryKeyColumn}"
 Tool call data/sources keys MUST be exactly: ${JSON.stringify(columnNames)}
 
-━━ STEP 1: FETCH ━━
-Call fetch_page for the URL provided in the prompt.
-
-━━ STEP 2: EXTRACT ━━
-Read the full page content.
-Identify ALL entities that match the dataset schema — do not stop after the first one.
-
-━━ STEP 3: BATCH INSERT ━━
-Call batch_insert_rows ONCE with ALL entities found on the page.
-- Include every entity you found — do not omit any.
-- For columns you cannot confirm from this page, use "" — never fabricate.
-- For every column you DO fill, record the source URL.
-- If no matching entities were found, skip this step.
-
-━━ RULES ━━
-1. REAL VALUES ONLY. Never fabricate — use "" for unverifiable columns.
-2. SOURCE ATTRIBUTION. Record the source URL for every column you fill.
-3. READ THE FULL PAGE FIRST. Identify all entities before calling batch_insert_rows.
-4. ONE CALL ONLY. Call batch_insert_rows exactly once with all entities combined.
+━━ PROCEDURE ━━
+1. Call fetch_page for the URL in your prompt. (tool call 1)
+2. Read the content. Extract every entity that matches the schema.
+   - Use "" for any column you cannot confirm from this page. Never fabricate.
+   - Record the page URL as source for every column you fill.
+3. Call batch_insert_rows with all entities in one call. (tool call 2)
+4. Write FINAL OUTPUT.
 
 ━━ FINAL OUTPUT ━━
-After all work is done, write a summary with exactly these labels:
+After all tool calls are done, write a summary with exactly these labels:
 
-LEADS: <URLs of other pages you noticed that likely contain more matching entities;
-        list each URL on its own line with a dash (- https://...);
-        also suggest search queries that might find more entities of this type>
-SOURCE_QUALITY: <brief assessment of the page: data richness, entity coverage, reliability>`;
+LEADS: <list each URL on its own line with a dash (- https://...);
+        include pagination URLs you did NOT fetch, related list pages you noticed,
+        and search queries that would find more entities of this type>
+SOURCE_QUALITY: <brief assessment: data richness, entity coverage, reliability>`;
 }
 
 /**
