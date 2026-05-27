@@ -32,12 +32,21 @@ Examples: "YC W2025 batch companies list", "AI startups ${currentYear} funding",
 "${currentMonth} ${currentYear} [topic] directory"
 
 PHASE 2 — EXTRACT (parallel)
-Collect all qualifying URLs from search results AND from leads returned by previous extract_rows calls.
+Collect up to ${targetRows / 4} qualifying URLs from search results AND from leads returned by previous extract_rows calls.
 A URL qualifies if ALL of the following are true:
   - Relevance:  title or snippet names a matching entity, list, or directory for this dataset topic
   - Data value: snippet suggests real column values are present (names, prices, dates, contacts, etc.)
   - Source:     official site, known directory, or reputable domain (not SEO spam or thin content)
-  - Novelty:    not already dispatched in this run
+  - Novelty:    different from previous URLs dispatched in this run, likely to provide new information
+
+URL QUALITY — prefer fast, single-page sources:
+  PREFER:  editorial lists ("best of", "top N", rankings), Wikipedia list pages, curated directories
+           that show all data on ONE page (e.g. en.wikipedia.org/wiki/List_of_...).
+  AVOID:   paginated browse/catalog pages that require many page loads to see all entities.
+           Signs of pagination: URLs with /browse/, /all/, /catalog/, page numbers, ?page=, ?sort=,
+           ?offset= or similar. These are slow (many fetches) and block Phase 3.
+           Only dispatch paginated URLs when no single-page alternative is available, and prefer
+           a specific internal page (e.g. page 1 only) over the browse root.
 
 Track every URL you dispatch — never send the same URL twice in one run.
 Avoid batches that clearly cover the exact same set of entities.

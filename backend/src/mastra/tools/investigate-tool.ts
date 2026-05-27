@@ -802,7 +802,19 @@ export function buildExtractTool(
           }
         }
 
-        const existingRowsText = buildExistingRowsText();
+        // Compact existing-rows context: the extract agent cannot meaningfully
+        // act on a 300-row dump, and sending it inflates the prompt for every
+        // parallel extract call. Row-level dedup is handled by batch_insert_rows
+        // (rowIndex + pendingInserts), so the agent only needs a count + a short
+        // sample of known primary keys to orient its extraction.
+        const complete = countCompleteRows();
+        const knownKeys = Array.from(rowIndex.keys()).slice(0, 30);
+        const existingRowsText =
+          rowIndex.size === 0
+            ? "None yet."
+            : `${rowIndex.size} rows collected so far (${complete} complete). ` +
+              `Sample of known primary keys (do NOT re-insert these): ${knownKeys.join(", ")}` +
+              (rowIndex.size > 30 ? ` … and ${rowIndex.size - 30} more.` : ".");
 
         // Build a fresh batch_insert_rows tool that shares the run-level
         // rowIndex and pendingInserts closure.
@@ -827,7 +839,7 @@ export function buildExtractTool(
           batchInsertRowsTool,
         );
 
-        const result = await agent.generate(prompt, { maxSteps: 40 });
+        const result = await agent.generate(prompt, { maxSteps: 20 });
         const parsed = parseExtractOutput(result.text);
 
         console.log(
