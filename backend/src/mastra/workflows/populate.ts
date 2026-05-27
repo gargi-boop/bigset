@@ -3,6 +3,7 @@ import { z } from "zod";
 import { datasetContextSchema, populateColumnSchema } from "../../pipeline/populate.js";
 import { convex, internal } from "../../convex.js";
 import { buildPopulateAgent } from "../agents/populate.js";
+import { env } from "../../env.js";
 
 /**
  * Server-set auth/run context threaded through every step.
@@ -118,6 +119,7 @@ const agentStep = createStep({
       inputData.authorizedDatasetId,
       inputData.authContext,
       inputData.columns,
+      env.POPULATE_TARGET_ROWS,
     );
     try {
       const result = await agent.generate(inputData.prompt, { maxSteps: 80 });
