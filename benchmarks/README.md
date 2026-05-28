@@ -14,7 +14,7 @@ When a user clicks "Populate" in the app, or when the benchmark runner triggers 
 |---|---|
 | `searchCalls` | Calls to `search_web` (TinyFish search API) |
 | `fetchCalls` | Calls to `fetch_page` (TinyFish fetch API) |
-| `investigateCalls` | `investigate_row` dispatches from the orchestrator |
+| `investigateCalls` | `run_subagent` dispatches from the orchestrator |
 | `rowsInserted` | Rows successfully inserted into the dataset |
 | `tokensInput` / `tokensOutput` | Total LLM tokens across all agents |
 | `orchestratorTokens*` / `investigateTokens*` | Token breakdown per agent tier |
@@ -23,6 +23,8 @@ When a user clicks "Populate" in the app, or when the benchmark runner triggers 
 | `durationMs` | Wall-clock time for the full populate run |
 
 Each run also records `status` (`success` / `error`), any error message, and an `isBenchmark` flag so you can filter benchmark runs from real sessions.
+
+> **Note:** The workflow includes an enumeration classification step that calls an LLM directly (not through an agent) to decide whether to use a scraper or search strategy. The tokens used by that step are **not** captured in the metrics above — they're a small fixed cost per run (~100–200 input tokens, ~5 output tokens) but worth knowing if you're doing precise cost accounting.
 
 ---
 
@@ -225,12 +227,15 @@ Edit [`prompts.json`](./prompts.json) to add your own benchmark prompts. Each en
   "datasetName": "Human-readable dataset name",
   "description": "What the dataset is about — shown to the agent",
   "columns": [
-    { "name": "column_name", "type": "text", "description": "What this field is" }
+    { "name": "entity_name", "type": "text", "description": "The entity name", "isPrimaryKey": true },
+    { "name": "other_field", "type": "text", "description": "What this field is" }
   ]
 }
 ```
 
 Column types: `text`, `number`, `boolean`, `url`, `date`.
+
+Mark at least one column as `"isPrimaryKey": true` — the orchestrator uses this to tell subagents which field is the unique identifier, and the workflow uses it to reject duplicate rows automatically.
 
 Then run:
 ```bash
@@ -241,7 +246,7 @@ make benchmark ARGS="--prompt my-prompt-id"
 
 ## Cost estimation
 
-Rough estimates based on Kimi K2 pricing (as of writing):
+Rough estimates based on DeepSeek V4 Pro pricing (as of writing):
 
 | Per run (20 rows target) | Approximate cost |
 |---|---|
