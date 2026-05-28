@@ -4,7 +4,7 @@
  *
  * Calls the real populateWorkflow directly (no HTTP layer) using the
  * same code path as production app sessions. Metrics are collected by
- * the instrumented workflow and written to the populateRuns Convex table.
+ * the instrumented workflow and written to the runStats Convex table.
  * After each run the script reads those metrics back and emits a JSON
  * summary.
  *
@@ -143,7 +143,7 @@ async function deleteBenchmarkDataset(datasetId: string): Promise<void> {
 }
 
 async function fetchRunMetrics(workflowRunId: string): Promise<PopulateRunRecord | null> {
-  return await convex.query(internal.populateRuns.getByWorkflowRunId, { workflowRunId });
+  return await convex.query(internal.runStats.getByWorkflowRunId, { workflowRunId });
 }
 
 // ─── Run a single prompt ─────────────────────────────────────────────────────

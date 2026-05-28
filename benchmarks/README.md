@@ -2,7 +2,7 @@
 
 This directory contains the benchmark runner for the BigSet populate workflow. It exercises the **real** populate pipeline — same agent code, same Convex writes, same TinyFish API calls — so the metrics reflect actual agent performance rather than a simulation.
 
-Every populate run (benchmark or real user session) automatically records its stats to the `populateRuns` Convex table. This means you can analyze cost and performance for both benchmark runs and live app usage from the same place.
+Every populate run (benchmark or real user session) automatically records its stats to the `runStats` Convex table. This means you can analyze cost and performance for both benchmark runs and live app usage from the same place.
 
 ---
 
@@ -158,11 +158,11 @@ The benchmark emits a JSON object to stdout when it finishes. Example:
 
 ## Viewing run stats from actual app sessions
 
-Every populate run triggered by a real user through the app UI is also recorded in `populateRuns`. You can query it directly via the Convex dashboard or CLI.
+Every populate run triggered by a real user through the app UI is also recorded in `runStats`. You can query it directly via the Convex dashboard or CLI.
 
 ### Convex dashboard
 
-Open http://localhost:6791 → select your Convex instance → go to **Data** → **populateRuns**.
+Open http://localhost:6791 → select your Convex instance → go to **Data** → **runStats**.
 
 Each row corresponds to one populate run. The `isBenchmark` field is `true` for benchmark runs and absent/`undefined` for real user sessions.
 
@@ -173,7 +173,7 @@ All queries below use the internal query functions added alongside the schema. R
 **List all runs for a specific dataset:**
 ```bash
 cd frontend
-node ../scripts/with-root-env.mjs npx convex run populateRuns:listByDataset \
+node ../scripts/with-root-env.mjs npx convex run runStats:listByDataset \
   --url http://127.0.0.1:3210 \
   --admin-key "$CONVEX_SELF_HOSTED_ADMIN_KEY" \
   '{"datasetId": "<your-dataset-id>"}'
@@ -182,7 +182,7 @@ node ../scripts/with-root-env.mjs npx convex run populateRuns:listByDataset \
 **List all runs for a specific user:**
 ```bash
 cd frontend
-node ../scripts/with-root-env.mjs npx convex run populateRuns:listByUser \
+node ../scripts/with-root-env.mjs npx convex run runStats:listByUser \
   --url http://127.0.0.1:3210 \
   --admin-key "$CONVEX_SELF_HOSTED_ADMIN_KEY" \
   '{"userId": "<clerk-user-id>"}'
@@ -191,7 +191,7 @@ node ../scripts/with-root-env.mjs npx convex run populateRuns:listByUser \
 **Fetch a single run by workflow run ID:**
 ```bash
 cd frontend
-node ../scripts/with-root-env.mjs npx convex run populateRuns:getByWorkflowRunId \
+node ../scripts/with-root-env.mjs npx convex run runStats:getByWorkflowRunId \
   --url http://127.0.0.1:3210 \
   --admin-key "$CONVEX_SELF_HOSTED_ADMIN_KEY" \
   '{"workflowRunId": "<run-id>"}'
@@ -209,7 +209,7 @@ To export all benchmark runs for offline analysis:
 
 ```bash
 cd frontend
-node ../scripts/with-root-env.mjs npx convex run populateRuns:listByUser \
+node ../scripts/with-root-env.mjs npx convex run runStats:listByUser \
   --url http://127.0.0.1:3210 \
   --admin-key "$CONVEX_SELF_HOSTED_ADMIN_KEY" \
   '{"userId": "benchmark-runner"}' | jq '.' > benchmark-history.json
@@ -256,4 +256,4 @@ Rough estimates based on DeepSeek V4 Pro pricing (as of writing):
 | TinyFish fetch (~20 calls) | ~$0.10 |
 | **Total per run** | **~$1.20** |
 
-These numbers come from the `tokensInput` / `tokensOutput` fields in `populateRuns`. Actual costs vary by dataset complexity and row count achieved.
+These numbers come from the `tokensInput` / `tokensOutput` fields in `runStats`. Actual costs vary by dataset complexity and row count achieved.
