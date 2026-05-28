@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useReactTable,
   getCoreRowModel,
+  getSortedRowModel,
   createColumnHelper,
   type ColumnDef,
+  type SortingState,
 } from "@tanstack/react-table";
 import { FixedSizeList } from "react-window";
 import type { DatasetMeta, DatasetRow, DatasetColumn } from "./types";
@@ -43,6 +45,9 @@ function buildColumns(
       header: col.name,
       size: storedWidths[col.name] ?? DEFAULT_COL_WIDTH,
       minSize: MIN_COL_WIDTH,
+      // alphanumeric handles both plain strings and numeric values stored as
+      // strings (e.g. "42", "$1,234") and does case-insensitive comparison.
+      sortingFn: "alphanumeric",
     }),
   );
 
@@ -84,6 +89,8 @@ export function DatasetTable({
     return () => observer.disconnect();
   }, []);
 
+  const [sorting, setSorting] = useState<SortingState>([]);
+
   const [storedWidths, setStoredWidths] = usePersistedColumnWidths(datasetId);
 
   const columns = useMemo(
@@ -96,6 +103,9 @@ export function DatasetTable({
     columns,
     columnResizeMode: "onChange",
     getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    onSortingChange: setSorting,
+    state: { sorting },
     getRowId: (row) => row._id,
   });
 
