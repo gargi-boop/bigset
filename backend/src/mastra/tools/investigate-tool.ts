@@ -12,8 +12,11 @@ const investigateInputSchema = z.object({
     ),
   primary_keys: z
     .record(z.string(), z.string())
+    .refine((v) => Object.keys(v).length > 0, {
+      message: "primary_keys must contain at least one entry",
+    })
     .describe(
-      "Known primary key column value(s) for this entity. Pass what you have — if a value wasn't found on the listing page, pass an empty object {} and the subagent will discover it through research. e.g. {\"Company Name\": \"Stripe\"} or {}",
+      "Known primary key column value(s) for this entity. Always pass at minimum the entity name (e.g. {\"Company Name\": \"Stripe\"}). Include URL/ID if already found; the subagent will discover it through research if not.",
     ),
   context: z
     .string()
@@ -73,7 +76,7 @@ export function buildSubagentTool(
   return createTool({
     id: "run_subagent",
     description:
-      "Hand off a lead to a subagent that will research it deeply and insert a single row if it finds real, verified data. You MUST pass the primary key values (primary_keys) for the entity — the subagent will fill in the remaining columns. Also pass any URLs and context you have found.",
+      "Hand off a lead to a subagent that will research it deeply and insert a single row if it finds real, verified data. Always pass at minimum the entity name in primary_keys (e.g. {\"Company Name\": \"Stripe\"}). Include URL/ID primary keys if already found. Also pass any URLs and context you have found.",
     inputSchema: investigateInputSchema,
     outputSchema: investigateOutputSchema,
     execute: async ({ entity_hint, primary_keys, context, urls, notes }) => {
@@ -88,10 +91,7 @@ export function buildSubagentTool(
         );
 
         const pkEntries = Object.entries(primary_keys).filter(([, v]) => v.trim());
-        const pkBlock =
-          pkEntries.length > 0
-            ? pkEntries.map(([k, v]) => `- ${k}: ${v}`).join("\n")
-            : "(not yet found — you must discover this through research before inserting)";
+        const pkBlock = pkEntries.map(([k, v]) => `- ${k}: ${v}`).join("\n");
         const urlsBlock =
           urls && urls.length > 0
             ? `\nUseful URLs to start from:\n${urls.map((u) => `- ${u}`).join("\n")}`
@@ -102,7 +102,7 @@ export function buildSubagentTool(
 
 Entity: ${entity_hint}
 
-Primary key values (MUST be filled in insert_row — find them through research if not listed below):
+Primary key values (MUST be included in insert_row):
 ${pkBlock}
 
 Context (partial data already found):

@@ -84,7 +84,10 @@ export const insert = internalMutation({
 
       const isDuplicate = existingRows.some((existing) => {
         const existingData = existing.data as Record<string, unknown>;
-        return pkColumns.every((pk: { name: string }) => {
+        // OR logic: if ANY primary key column matches, it's a duplicate.
+        // This handles compound PKs (e.g. name + URL) where either one
+        // alone is enough to identify the same entity.
+        return pkColumns.some((pk: { name: string }) => {
           const newVal = args.data[pk.name];
           const existingVal = existingData[pk.name];
           return (

@@ -9,16 +9,15 @@
  *
  * Deduplication strategy
  * ─────────────────────
- * The tool maintains a per-run dedup set in its closure. The dedup key is:
- *   - Primary key composite (normalised) when the LLM found primary key values.
- *   - `name:<dedup_hint>` (normalised entity name) as fallback when primary
- *     key values are not visible on the listing page (e.g. when the PK is a
- *     company URL that isn't shown directly on a directory page).
+ * The tool maintains a per-run dedup set in its closure. Dedup uses OR
+ * logic across all primary key columns: for each entity, one key is
+ * stored per found PK column value (`${colName}:${normalizedValue}`).
+ * An entity is skipped if ANY of its PK column keys is already in the
+ * set. When dispatched, ALL found PK column keys are added to the set.
  *
- * This means listing pages that only show company names will still yield
- * one entity per company, correctly deduped, even though the URL primary key
- * is missing. The investigate agent discovers the actual primary key value
- * through research before inserting.
+ * Schema inference always produces at least a human-readable name column
+ * as a PK (always visible on listing pages) and optionally a URL/ID column.
+ * The entity name PK is required — entities without it are skipped.
  */
 
 import { createTool } from "@mastra/core/tools";
@@ -30,23 +29,16 @@ import { env } from "../../env.js";
 import type { PopulateColumn } from "../../pipeline/populate.js";
 
 // Per-page extraction output schema.
-// primary_keys is intentionally optional — listing pages often show entity
-// names/descriptions but not the canonical URL or ID that serves as PK.
-// dedup_hint is required so we can always deduplicate on entity name.
+// primary_keys should always include the entity name PK (always visible on
+// listing pages). URL/ID PK is filled if directly visible; omit otherwise.
 const pageExtractionSchema = z.object({
   entities: z
     .array(
       z.object({
-        dedup_hint: z
-          .string()
-          .describe(
-            "The entity's name or most unique visible identifier (e.g. company name, person name, product title). Required — used for deduplication when primary key values are not yet known.",
-          ),
         primary_keys: z
           .record(z.string(), z.string())
-          .optional()
           .describe(
-            "Primary key column values if directly visible on the page. Omit or leave empty if the value isn't shown — the investigate agent will find it.",
+            "Primary key column values found on the page. The entity name column MUST always be filled — it is always visible on listing pages. Fill URL/ID columns only if the value is directly visible on the page; omit them if not shown.",
           ),
         partial_data: z
           .record(z.string(), z.string())
@@ -95,23 +87,27 @@ export function buildExtractTool(
     )
     .join("\n");
 
-  // Per-run dedup set. Key is either the primary-key composite (if values
-  // were found) or `name:<normalised dedup_hint>` (fallback).
+  // Per-run dedup set. One entry per PK column value:
+  // key format: `${columnName}:${normalizedValue}`
+  // An entity is a duplicate if ANY of its PK column keys is already present.
+  // All found PK column keys are added when an entity is dispatched.
   const dispatchedKeys = new Set<string>();
 
-  function makeEntityKey(
-    dedupHint: string,
-    primaryKeys?: Record<string, string>,
-  ): string {
-    // Try to build a key from non-empty primary key values
-    if (primaryKeys) {
-      const filled = pkColumns
-        .map((c) => [c.name, (primaryKeys[c.name] ?? "").toLowerCase().trim()])
-        .filter(([, v]) => v !== "");
-      if (filled.length > 0) return JSON.stringify(filled);
+  function makePkKeys(primaryKeys: Record<string, string>): string[] {
+    const keys: string[] = [];
+    for (const col of pkColumns) {
+      const val = (primaryKeys[col.name] ?? "").toLowerCase().trim();
+      if (val) keys.push(`${col.name}:${val}`);
     }
-    // Fall back to normalised entity name
-    return `name:${dedupHint.toLowerCase().trim()}`;
+    return keys;
+  }
+
+  function isAlreadyDispatched(keys: string[]): boolean {
+    return keys.some((k) => dispatchedKeys.has(k));
+  }
+
+  function recordDispatched(keys: string[]): void {
+    for (const k of keys) dispatchedKeys.add(k);
   }
 
   const pkNames = pkColumns.map((c) => `"${c.name}"`).join(", ");
@@ -123,8 +119,7 @@ Target columns:
 ${columnsDesc}
 
 For each matching entity on the page:
-- ALWAYS fill dedup_hint with the entity's name or most unique visible identifier (e.g. company name). This is required.
-- Fill primary_keys (${pkNames}) if the values are directly visible on the page. If not visible, omit them — leave the field out entirely. Do NOT guess or fabricate primary key values.
+- Fill primary_keys (${pkNames}). The entity name column MUST always be filled — entity names are always visible on listing pages. Fill URL/ID columns only if the value is directly visible; omit them entirely if not shown on the page. Do NOT guess or fabricate values.
 - Fill partial_data with any other column values visible on the page.
 - Fill hints with short notes on where to find missing values for this entity.
 
@@ -135,7 +130,7 @@ Only include entities that genuinely match the dataset topic. Do not fabricate v
   return createTool({
     id: "extract_pages",
     description:
-      "Fetch 1–5 web pages and extract all matching dataset entities from them using a fast LLM. Returns structured entity data (primary keys if found, partial column values, dedup hints, hints for missing fields) and leads (URLs with more entities). Only returns entities not yet dispatched to run_subagent.",
+      "Fetch 1–5 web pages and extract all matching dataset entities from them using a fast LLM. Returns structured entity data (primary keys including entity name, partial column values, hints for missing fields) and leads (URLs with more entities). Only returns entities not yet dispatched to run_subagent.",
     inputSchema: z.object({
       urls: z
         .array(z.string())
@@ -146,8 +141,7 @@ Only include entities that genuinely match the dataset topic. Do not fabricate v
     outputSchema: z.object({
       entities: z.array(
         z.object({
-          dedup_hint: z.string(),
-          primary_keys: z.record(z.string(), z.string()).optional(),
+          primary_keys: z.record(z.string(), z.string()),
           partial_data: z.record(z.string(), z.string()).optional(),
           hints: z.string().optional(),
           source_url: z.string(),
@@ -167,8 +161,7 @@ Only include entities that genuinely match the dataset topic. Do not fabricate v
       );
 
       const newEntities: Array<{
-        dedup_hint: string;
-        primary_keys?: Record<string, string>;
+        primary_keys: Record<string, string>;
         partial_data?: Record<string, string>;
         hints?: string;
         source_url: string;
@@ -194,12 +187,12 @@ Only include entities that genuinely match the dataset topic. Do not fabricate v
 
             let pageNewCount = 0;
             for (const entity of object.entities) {
-              // Require at minimum a dedup_hint (entity name)
-              if (!entity.dedup_hint?.trim()) continue;
+              // Require at least one PK column value (entity name is always filled)
+              const pkKeys = makePkKeys(entity.primary_keys ?? {});
+              if (pkKeys.length === 0) continue;
 
-              const key = makeEntityKey(entity.dedup_hint, entity.primary_keys);
-              if (!dispatchedKeys.has(key)) {
-                dispatchedKeys.add(key);
+              if (!isAlreadyDispatched(pkKeys)) {
+                recordDispatched(pkKeys);
                 newEntities.push({ ...entity, source_url: url });
                 pageNewCount++;
               }
