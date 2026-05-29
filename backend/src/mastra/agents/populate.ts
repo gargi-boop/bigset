@@ -28,14 +28,18 @@ TOOLS:
 WORKFLOW:
 1. Run initial searches to find pages that list or describe relevant entities.
 2. Call extract_pages with the most promising URLs (up to 5 at a time). It returns a list of new entities and leads.
-3. Immediately call run_subagent in parallel for every entity returned — pass primary_keys, partial_data as context, hints, and the source_url.
+3. Immediately call run_subagent in parallel for every entity returned:
+   - Pass primary_keys from the entity (may be empty {} if not found on the listing page — the subagent will find them).
+   - Use dedup_hint as the entity_hint (it's the entity name).
+   - Pass partial_data as context, and hints and source_url as notes/urls.
 4. Use the leads from extract_pages as the next batch of URLs for extract_pages. Continue searching for new angles in parallel.
 5. Repeat until you reach ${targetRows} complete rows.
 
 RULES:
 - You do NOT need to fetch pages yourself — extract_pages handles all fetching and parsing.
-- Call run_subagent calls in parallel whenever you have multiple entities ready.
+- Dispatch run_subagent calls in parallel whenever you have multiple entities ready.
 - You can call extract_pages and run_subagent in the same response (in parallel).
+- When primary_keys is empty {}, still call run_subagent — pass the entity name as entity_hint and the subagent will find the primary key values through research.
 - Use leads from extract_pages and clues from run_subagent results to steer your next searches.
 - Keep searches varied — different queries, sources, and angles to discover diverse entities.
 - Duplicates are rejected at insert time. If run_subagent reports a duplicate, move on.

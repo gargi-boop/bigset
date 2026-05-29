@@ -12,11 +12,8 @@ const investigateInputSchema = z.object({
     ),
   primary_keys: z
     .record(z.string(), z.string())
-    .refine((v) => Object.keys(v).length > 0, {
-      message: "primary_keys must include at least one primary-key value",
-    })
     .describe(
-      "REQUIRED: the primary key column value(s) for this entity. e.g. {\"Company Name\": \"Stripe\"} or {\"First Name\": \"John\", \"Last Name\": \"Doe\"}. You MUST provide at least the primary key values you have found.",
+      "Known primary key column value(s) for this entity. Pass what you have — if a value wasn't found on the listing page, pass an empty object {} and the subagent will discover it through research. e.g. {\"Company Name\": \"Stripe\"} or {}",
     ),
   context: z
     .string()
@@ -90,9 +87,11 @@ export function buildSubagentTool(
           columns,
         );
 
-        const pkBlock = Object.entries(primary_keys)
-          .map(([k, v]) => `- ${k}: ${v}`)
-          .join("\n");
+        const pkEntries = Object.entries(primary_keys).filter(([, v]) => v.trim());
+        const pkBlock =
+          pkEntries.length > 0
+            ? pkEntries.map(([k, v]) => `- ${k}: ${v}`).join("\n")
+            : "(not yet found — you must discover this through research before inserting)";
         const urlsBlock =
           urls && urls.length > 0
             ? `\nUseful URLs to start from:\n${urls.map((u) => `- ${u}`).join("\n")}`
@@ -103,7 +102,7 @@ export function buildSubagentTool(
 
 Entity: ${entity_hint}
 
-Primary key values (MUST be included in insert_row):
+Primary key values (MUST be filled in insert_row — find them through research if not listed below):
 ${pkBlock}
 
 Context (partial data already found):
