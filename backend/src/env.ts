@@ -37,11 +37,11 @@ export const env = {
     return Number.isFinite(v) && v > 0 ? v : 20;
   })(),
   BIGSET_ORCHESTRATOR_MODEL:
-    process.env.BIGSET_ORCHESTRATOR_MODEL ?? "deepseek/deepseek-v4-0324",
+    process.env.BIGSET_ORCHESTRATOR_MODEL ?? "deepseek/deepseek-v4-pro",
   BIGSET_INVESTIGATE_MODEL:
-    process.env.BIGSET_INVESTIGATE_MODEL ?? "deepseek/deepseek-v4-0324",
+    process.env.BIGSET_INVESTIGATE_MODEL ?? "deepseek/deepseek-v4-pro",
   BIGSET_EXTRACT_MODEL:
-    process.env.BIGSET_EXTRACT_MODEL ?? "deepseek/deepseek-v4-0324",
+    process.env.BIGSET_EXTRACT_MODEL ?? "deepseek/deepseek-v4-pro",
 
   // Resend (transactional email). Optional — when RESEND_API_KEY is unset
   // the email module no-ops with a log line, so local dev works without
