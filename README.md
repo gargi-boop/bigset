@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Live, queryable datasets that update automatically.</strong>
+  <strong>Open-source multi-agent system that builds verified datasets from the live web, on the fly.</strong>
 </p>
 
 <p align="center">
@@ -15,89 +15,175 @@
 
 ---
 
-Think of it like a spreadsheet that fills itself in — you describe the dataset you want (YC companies currently hiring, insurance quotes in your area, restaurants serving a specific brand), and BigSet builds it, keeps it fresh, and lets you query it with SQL.
+> ⚠️ **BigSet is experimental.** It works, sometimes surprisingly well, but expect rough edges. We're building in the open and shipping fast. Things will break, improve, and change. [Issues](https://github.com/tinyfish-io/bigset/issues) and feedback are very welcome.
+
+---
+
+## What Is BigSet?
+
+You type a sentence:
+
+> *"YC companies that are currently hiring engineers, with their funding stage, location, and number of open roles."*
+
+BigSet infers the schema automatically, sends autonomous agents to research it on the live web, verifies what they find against real sources, deduplicates, and hands you a structured dataset. Download as CSV or XLSX. Set a refresh cadence (30 min, 6 hours, 12 hours, daily, weekly) and the agents re-run on schedule, pulling fresh data so the dataset never goes stale.
+
+**Any topic.** GPU prices. Competitor features. Research papers. Restaurant menus. Insurance quotes. Whatever you type, it builds. And keeps current.
+
+You don't pick a scraper, write selectors, or point it at a URL. You just describe the data you care about, set a refresh cadence, and BigSet handles the rest.
 
 Built on [TinyFish](https://tinyfish.ai) APIs.
 
+
 ## ✨ Why BigSet?
 
-At the end of the day, the only thing that matters is data. Every decision, every agent, every product — it all comes down to having the right data at the right time.
+At the end of the day, every interaction with the web, whether it's you or your AI agent, ultimately comes down to data. Prices, companies, jobs, research, availability, inventory. The web has all of it, scattered across millions of pages.
 
-So what if you could just… ask for it? Describe the dataset you want — in plain English — and have it built, structured, and kept fresh automatically. No scrapers to maintain. No pipelines to babysit. No waking up to broken cron jobs because some site changed a div.
+There are great tools out there for parts of this problem. Scraping frameworks that extract content from URLs you point them at. Search APIs that return ranked results. Pre-built actors for specific sites. Lead gen platforms that produce verified lists of people and companies. They work, and they work well for what they do.
 
-You describe it. BigSet collects it. Your agents query it with SQL. It stays up to date on your schedule — every 30 minutes, every hour, whatever you need. And if something breaks, a healer agent patches it before you even notice.
+But the moment you need something that cuts across those categories, or something none of them cover, you're back to square one. Stitching together search, extraction, schema design, deduplication, verification, and a cron job to keep it fresh. For every dataset. Every time. The data is right there on the web. Getting it into a table you can use is still a project.
+
+BigSet closes that gap. One sentence in, verified structured data out, refreshed on whatever cadence you set. Your agents get live data to reason over; you get a table you can actually use.
 
 Any dataset. Any source. Always fresh. That's the idea.
+
+### How It Works
+
+1. **You describe the dataset** in plain English, as vague or specific as you like
+2. **AI infers the schema**: column names, types, primary keys, where to look on the web
+3. **An orchestrator agent** discovers entities via web search
+4. **Sub-agents fan out in parallel**: each one investigates a single entity, fetches real data, and inserts a verified row
+5. **You get a structured table**: browse it in the UI, export CSV or XLSX
+6. **Set a refresh cadence** and the agents re-run on schedule, keeping the dataset current automatically
+
+## Things to Know Before You Start
+
+- **It's experimental.** Expect rough edges; schema inference isn't always perfect, and some topics work better than others.
+- **Dataset generation takes 2-5 minutes.** The agents are doing real web research: searching, fetching pages, verifying data. It's not instant, but the output is real.
+- **It works best for topics with publicly available web data.** If the information exists on public web pages, BigSet can probably find it. Data behind logins or paywalls is out of reach for now.
+- **Scheduled refresh keeps datasets current.** Set a cadence (30 min to weekly) and the agents re-run automatically. No manual re-runs.
+- **Datasets are downloadable, not queryable.** You can browse in the UI and export CSV/XLSX. SQL query support is on the roadmap.
 
 ---
 
 ## 🚀 Quick Start
 
-**Prerequisites:** [Docker](https://docs.docker.com/get-docker/), [Make](https://www.gnu.org/software/make/), and a free [Clerk](https://dashboard.clerk.com) account
+**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) and [Make](https://www.gnu.org/software/make/)
 
-### 1. Clone and set up Clerk
+You'll also need API keys from three services (all free to set up):
+
+| Service | What it's for | Get your key |
+|---------|--------------|-------------|
+| **Clerk** | User authentication | [dashboard.clerk.com](https://dashboard.clerk.com) |
+| **OpenRouter** | LLM calls (schema inference + agents) | [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys) |
+| **TinyFish** | Web search + page fetching | [agent.tinyfish.ai/api-keys](https://agent.tinyfish.ai/api-keys) |
+
+### Step 1: Clone the repo
 
 ```bash
 git clone https://github.com/tinyfish-io/bigset.git
 cd bigset
-```
-
-Create a Clerk application at [dashboard.clerk.com](https://dashboard.clerk.com), then go to **JWT Templates** and enable the **Convex** template.
-
-### 2. Configure env
-
-```bash
 cp .env.example .env
-# Fill in NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY,
-# CLERK_JWT_ISSUER_DOMAIN, OPENROUTER_API_KEY, and optional service keys.
 ```
 
-> **Required for the create-dataset wizard:** set `OPENROUTER_API_KEY` (used by the schema-inference pipeline). Get one at [openrouter.ai](https://openrouter.ai). Without it the wizard's "Generate Schema" step will fail.
+### Step 2: Set up Clerk (auth)
 
-> **Optional:** to enable [PostHog](https://posthog.com) product analytics + session replay + error tracking, set `NEXT_PUBLIC_POSTHOG_KEY` and `NEXT_PUBLIC_POSTHOG_HOST`. Leave blank to disable cleanly (the app no-ops every event).
+Clerk handles user sign-in. The setup takes ~2 minutes:
 
-### 3. Start everything
+1. Go to [dashboard.clerk.com](https://dashboard.clerk.com) and create a new application
+2. Pick a sign-in method (email, Google, GitHub, whatever you prefer)
+3. Once created, go to **Configure → API Keys** in the sidebar
+   - Copy **Publishable Key** → paste as `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` in `.env`
+   - Copy **Secret Key** → paste as `CLERK_SECRET_KEY` in `.env`
+4. Go to **Configure → JWT Templates** in the sidebar
+   - Click **New template** → select the **Convex** template → click **Save**
+5. Go to **Configure → Settings** (or **Domains**)
+   - Find your **Issuer URL** (looks like `https://your-app-name.clerk.accounts.dev`)
+   - Paste it as `CLERK_JWT_ISSUER_DOMAIN` in `.env`
+
+### Step 3: Set up OpenRouter (LLM)
+
+OpenRouter routes LLM calls to Claude Sonnet (schema inference) and Qwen (agents). It's pay-as-you-go; a dataset costs a few dollars in LLM usage.
+
+1. Go to [openrouter.ai](https://openrouter.ai) and create an account
+2. Go to [Settings → Keys](https://openrouter.ai/settings/keys) and create an API key
+3. Paste it as `OPENROUTER_API_KEY` in `.env`
+4. Add some credits; $5-10 is plenty to start
+
+### Step 4: Set up TinyFish (web access)
+
+TinyFish powers all web search and page fetching. Search and Fetch have generous rate limits.
+
+1. Go to [agent.tinyfish.ai](https://agent.tinyfish.ai) and create an account
+2. Go to [API Keys](https://agent.tinyfish.ai/api-keys) and create a key
+3. Paste it as `TINYFISH_API_KEY` in `.env`
+
+### Step 5: Start everything
 
 ```bash
 make dev
 ```
 
-This starts all Docker services, waits for Convex to be healthy, and deploys Convex functions automatically.
-`make dev` checks that root `.env` contains real Clerk and OpenRouter values before it starts Docker.
-Once it's up:
+This builds and starts all Docker services (Postgres, Convex, frontend, backend, Mastra). It waits for Convex to be healthy and deploys the schema automatically.
 
-- App: http://localhost:3500
-- Convex dashboard: http://localhost:6791
-- [Mastra Studio](https://mastra.ai) (workflow inspector): http://localhost:4111
-
-### 4. Generate Convex admin key (first time only)
+**First run only, you need to generate a Convex admin key:**
 
 ```bash
-docker compose exec convex ./generate_admin_key.sh
+docker compose -f docker-compose.dev.yml exec convex ./generate_admin_key.sh
 ```
 
-Paste the output into `.env` as `CONVEX_SELF_HOSTED_ADMIN_KEY`, then re-run `make dev`.
+This outputs a key that looks like `convex-self-hosted|0113....`. **Copy the entire string including the `convex-self-hosted|` prefix**, and paste the whole thing as `CONVEX_SELF_HOSTED_ADMIN_KEY` in your `.env`:
 
-### 5. Load curated public datasets
+```
+CONVEX_SELF_HOSTED_ADMIN_KEY=convex-self-hosted|0113.....
+```
 
-The landing page and the dashboard's "Curated" section read from a set of 9 system-owned datasets. Load them with:
+Then restart:
 
 ```bash
-make seed-public-datasets
+make down
+make dev
 ```
 
-The script is **idempotent** — rerunning it skips datasets that already exist (matched by a stable `seedKey`, so renaming a curated dataset never creates a duplicate). To add a 10th curated dataset, append it to `PUBLIC_DATASETS` in [frontend/convex/publicSeed.ts](frontend/convex/publicSeed.ts) with a fresh `seedKey` and rerun the command. To replace existing curated content in place, pass `force: true`:
+### Step 6: Open BigSet
 
-```bash
-cd frontend
-node ../scripts/with-root-env.mjs npx convex run publicSeed:seedPublicDatasets '{"force":true}'
-```
+Once everything is running:
+
+| Service | URL |
+|---------|-----|
+| **BigSet app** | [localhost:3500](http://localhost:3500) |
+| **Convex dashboard** | [localhost:6791](http://localhost:6791) |
+| **Mastra Studio** (workflow inspector) | [localhost:4111](http://localhost:4111) |
 
 Open [localhost:3500](http://localhost:3500) and click **Get started** to sign in.
 
 > **Note:** root `.env` is the only local env file. If you edit Convex functions in `frontend/convex/`, run `make convex-push` to deploy the changes.
 
 > **Free tier:** each signed-in account gets **2,500 row operations per calendar month** (resets on the 1st, UTC). The header shows a live usage badge; system-owned curated datasets bypass the quota.
+
+### Step 7 (optional): Load curated datasets
+
+BigSet includes 9 curated public datasets (AI companies hiring, GPU prices, model pricing, etc.) that show on the landing page:
+
+```bash
+make seed-public-datasets
+```
+
+This is idempotent; safe to run multiple times.
+
+---
+
+## Your `.env` at a Glance
+
+| Variable | Required | Where to get it |
+|----------|----------|----------------|
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | ✅ | Clerk dashboard → API Keys |
+| `CLERK_SECRET_KEY` | ✅ | Clerk dashboard → API Keys |
+| `CLERK_JWT_ISSUER_DOMAIN` | ✅ | Clerk dashboard → Settings/Domains |
+| `OPENROUTER_API_KEY` | ✅ | openrouter.ai → Settings → Keys |
+| `TINYFISH_API_KEY` | ✅ | agent.tinyfish.ai → API Keys |
+| `CONVEX_SELF_HOSTED_ADMIN_KEY` | ✅ | Generated after first `make dev` (Step 5) |
+| `RESEND_API_KEY` | Optional | For "dataset ready" emails. Leave blank to skip. |
+| `NEXT_PUBLIC_POSTHOG_KEY` | Optional | For product analytics. Leave blank to disable. |
 
 ---
 
@@ -131,6 +217,19 @@ bigset/
 ├── docker-compose.dev.yml
 └── Makefile
 ```
+
+---
+
+## 🛣️ Roadmap
+
+We're building BigSet in the open. Here's what's coming:
+
+- [ ] **TinyFish Browser + Agent integration** — For JS-heavy sites, SPAs, and pages that need interaction to reveal data.
+- [ ] **Agent-native API** — So your agents can create, query, and consume BigSet datasets programmatically. Build datasets on the fly, export them, feed them to your agents today. Next up: agents generate and query datasets directly.
+- [ ] **SQL query layer** — Query your datasets with SQL instead of just exporting.
+- [ ] **Per-cell source provenance** — Click any cell to see exactly where the data came from.
+- [ ] **Healer agents** — Automatically detect and fix broken or stale rows.
+- [ ] **Incremental updates** — Refresh only what changed instead of rebuilding the whole dataset.
 
 ---
 
